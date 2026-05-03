@@ -70,6 +70,12 @@ export default function EditorPanel({
           cursorBlinking: "smooth",
           cursorWidth: 2,
           smoothScrolling: true,
+          renderControlCharacters: false,
+          unicodeHighlight: {
+            ambiguousCharacters: false,
+            invisibleCharacters: false,
+            nonBasicASCII: false,
+          },
         }}
       />
     </div>
