@@ -1,41 +1,47 @@
-use async_openai::{
-    types::CreateEmbeddingRequestArgs,
-    Client,
-};
+use serde::{Deserialize, Serialize};
 
 use crate::config::AppConfig;
 
-/// Generate an embedding vector for a single text
-pub async fn embed_text(
-    text: &str,
-    config: &AppConfig,
-) -> Result<Vec<f32>, String> {
-    let openai_config = async_openai::config::OpenAIConfig::new()
-        .with_api_base(&config.deepseek_base_url)
-        .with_api_key(&config.deepseek_api_key);
+#[derive(Serialize)]
+struct EmbedRequest<'a> {
+    model: &'a str,
+    input: Vec<&'a str>,
+}
 
-    let client = Client::with_config(openai_config);
+#[derive(Deserialize)]
+struct EmbedResponse {
+    embeddings: Vec<Vec<f32>>,
+}
 
-    let request = CreateEmbeddingRequestArgs::default()
-        .model("deepseek-chat")
-        .input([text])
-        .build()
-        .map_err(|e| format!("Failed to build embedding request: {}", e))?;
+/// Generate embedding vector using local Ollama API
+pub async fn embed_text(text: &str, config: &AppConfig) -> Result<Vec<f32>, String> {
+    let url = format!("{}/api/embed", config.embedding_base_url);
+    let body = EmbedRequest {
+        model: &config.embedding_model,
+        input: vec![text],
+    };
 
-    let response = client
-        .embeddings()
-        .create(request)
+    let client = reqwest::Client::new();
+    let resp = client
+        .post(&url)
+        .json(&body)
+        .send()
         .await
-        .map_err(|e| format!("Embedding API error: {}", e))?;
+        .map_err(|e| format!("Ollama 连接失败 ({}): {}", url, e))?;
 
-    let vec = response
-        .data
-        .first()
-        .ok_or("No embedding returned")?
-        .embedding
-        .iter()
-        .map(|f| *f as f32)
-        .collect();
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(format!("Ollama embedding 失败 ({}): {}", status, text));
+    }
 
-    Ok(vec)
+    let data: EmbedResponse = resp
+        .json()
+        .await
+        .map_err(|e| format!("Ollama 响应解析失败: {}", e))?;
+
+    data.embeddings
+        .into_iter()
+        .next()
+        .ok_or("Ollama 未返回嵌入向量".to_string())
 }

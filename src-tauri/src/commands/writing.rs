@@ -114,15 +114,19 @@ pub async fn get_config(
         "default_model": cfg.default_model,
         "model_overrides": overrides,
         "modules": MODULES,
+        "embedding_model": cfg.embedding_model,
+        "embedding_base_url": cfg.embedding_base_url,
     }))
 }
 
-/// Save full config (API key + model overrides)
+/// Save full config (API key + model overrides + embedding)
 #[command]
 pub async fn save_config(
     api_key: Option<String>,
     default_model: Option<String>,
     model_overrides: Option<std::collections::HashMap<String, Option<String>>>,
+    embedding_model: Option<String>,
+    embedding_base_url: Option<String>,
     config: State<'_, Arc<RwLock<AppConfig>>>,
     app_dir: State<'_, PathBuf>,
 ) -> Result<String, String> {
@@ -141,6 +145,12 @@ pub async fn save_config(
                 None => { cfg.model_overrides.remove(&module); }
             }
         }
+    }
+    if let Some(model) = embedding_model {
+        cfg.embedding_model = model;
+    }
+    if let Some(url) = embedding_base_url {
+        cfg.embedding_base_url = url;
     }
 
     cfg.save(&app_dir);

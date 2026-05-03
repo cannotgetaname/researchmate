@@ -11,6 +11,8 @@ pub struct AppConfig {
     pub deepseek_base_url: String,
     pub default_model: String,
     pub model_overrides: HashMap<String, String>,
+    pub embedding_model: String,
+    pub embedding_base_url: String,
 }
 
 impl Default for AppConfig {
@@ -20,6 +22,8 @@ impl Default for AppConfig {
             deepseek_base_url: "https://api.deepseek.com".to_string(),
             default_model: "deepseek-v4-pro".to_string(),
             model_overrides: HashMap::new(),
+            embedding_model: "embeddinggemma:latest".to_string(),
+            embedding_base_url: "http://localhost:11434".to_string(),
         }
     }
 }
