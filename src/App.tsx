@@ -13,6 +13,11 @@ export default function App() {
   const [apiKey, setApiKey] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [fillText, setFillText] = useState("");
+  const [configInfo, setConfigInfo] = useState<{
+    has_key: boolean;
+    deepseek_api_key_masked: string;
+    model_name: string;
+  } | null>(null);
 
   const wordCount = useMemo(
     () => (content.match(/[一-鿿\w]+/g) || []).length,
@@ -35,10 +40,31 @@ export default function App() {
     setFillText("");
   }, []);
 
+  const handleOpenSettings = async () => {
+    setShowSettings(true);
+    setSaveMsg("");
+    setApiKey("");
+    try {
+      const cfg = await invoke("get_config") as {
+        has_key: boolean;
+        deepseek_api_key_masked: string;
+        model_name: string;
+      };
+      setConfigInfo(cfg);
+    } catch (err) {
+      setConfigInfo(null);
+    }
+  };
+
   const handleSaveApiKey = async () => {
+    if (!apiKey.trim()) return;
     try {
       const msg = await invoke("save_api_key", { apiKey });
       setSaveMsg(msg as string);
+      setApiKey("");
+      // Reload config to show updated state
+      const cfg = await invoke("get_config") as typeof configInfo;
+      setConfigInfo(cfg);
     } catch (err) {
       setSaveMsg(`保存失败：${err}`);
     }
@@ -48,7 +74,7 @@ export default function App() {
     <div className="app-container">
       <TopNav
         projectName="我的论文"
-        onOpenSettings={() => setShowSettings(true)}
+        onOpenSettings={handleOpenSettings}
         onOpenAbout={() => setShowAbout(true)}
       />
 
@@ -94,14 +120,34 @@ export default function App() {
               设置
             </h3>
 
+            {/* Current config status */}
+            {configInfo && (
+              <div style={{
+                marginBottom: "var(--space-base)",
+                padding: "var(--space-sm) var(--space-base)",
+                backgroundColor: "var(--color-canvas-soft)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "13px",
+                color: "var(--color-muted)",
+              }}>
+                <div>模型：{configInfo.model_name}</div>
+                <div>
+                  API Key：{configInfo.has_key
+                    ? <span style={{ color: "var(--color-success)" }}>已配置 ({configInfo.deepseek_api_key_masked})</span>
+                    : <span style={{ color: "var(--color-error)" }}>未配置</span>
+                  }
+                </div>
+              </div>
+            )}
+
             <label style={{ fontSize: "13px", color: "var(--color-muted)" }}>
-              DeepSeek API Key
+              修改 DeepSeek API Key
             </label>
             <input
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="sk-..."
+              placeholder="输入新的 API Key..."
               style={{
                 width: "100%", height: "40px", marginTop: "var(--space-xs)",
                 padding: "0 var(--space-base)",

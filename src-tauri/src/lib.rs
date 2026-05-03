@@ -4,7 +4,7 @@ mod llm;
 mod config;
 
 use db::Database;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 pub fn run() {
     let app_dir = dirs::home_dir()
@@ -13,11 +13,13 @@ pub fn run() {
 
     let database = Database::new(&app_dir).expect("failed to initialize database");
     let db = Arc::new(database);
+    let cfg = Arc::new(RwLock::new(config::AppConfig::load(&app_dir)));
 
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(db)
-        .manage(config::AppConfig::load(&app_dir))
+        .manage(cfg)
+        .manage(app_dir)
         .invoke_handler(tauri::generate_handler![
             commands::writing::polish_text,
             commands::writing::create_session,

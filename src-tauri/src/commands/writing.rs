@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
+use std::path::PathBuf;
 use tauri::{command, Emitter, State};
 
 use crate::db::{Database, models::{Message, Session}};
@@ -19,7 +20,7 @@ pub async fn polish_text(
     style: Option<String>,
     app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
-    config: State<'_, AppConfig>,
+    config: State<'_, Arc<RwLock<AppConfig>>>,
 ) -> Result<String, String> {
     let style_instruction = match style.as_deref() {
         Some("academic") => "\n\n请使用严谨学术风格润色，提升正式度与精确度。",
@@ -29,13 +30,17 @@ pub async fn polish_text(
 
     let system_prompt = format!("{}{}", WRITING_POLISH_PROMPT, style_instruction);
 
-    let engine = LlmEngine::new(&config);
+    let (engine, key_empty) = {
+        let cfg = config.read().unwrap();
+        let engine = LlmEngine::new(&cfg);
+        let key_empty = cfg.deepseek_api_key.is_empty();
+        (engine, key_empty)
+    };
 
-    if config.deepseek_api_key.is_empty() {
+    if key_empty {
         return Err("请先在设置中配置 DeepSeek API Key。".to_string());
     }
 
-    // Event channel for streaming
     let handle = app_handle.clone();
 
     let result = engine
@@ -78,49 +83,43 @@ pub async fn create_session(
 /// Get current config (masked API key)
 #[command]
 pub async fn get_config(
-    config: State<'_, AppConfig>,
+    config: State<'_, Arc<RwLock<AppConfig>>>,
 ) -> Result<serde_json::Value, String> {
-    let masked_key = if config.deepseek_api_key.len() > 8 {
+    let cfg = config.read().unwrap();
+    let masked_key = if cfg.deepseek_api_key.len() > 8 {
         format!("{}...{}",
-            &config.deepseek_api_key[..4],
-            &config.deepseek_api_key[config.deepseek_api_key.len()-4..]
+            &cfg.deepseek_api_key[..4],
+            &cfg.deepseek_api_key[cfg.deepseek_api_key.len()-4..]
         )
-    } else if config.deepseek_api_key.is_empty() {
+    } else if cfg.deepseek_api_key.is_empty() {
         String::new()
     } else {
         "****".to_string()
     };
 
     Ok(serde_json::json!({
+        "has_key": !cfg.deepseek_api_key.is_empty(),
         "deepseek_api_key_masked": masked_key,
-        "deepseek_base_url": config.deepseek_base_url,
-        "model_name": config.model_name,
+        "deepseek_base_url": cfg.deepseek_base_url,
+        "model_name": cfg.model_name,
     }))
 }
 
-/// Save API key to config file (requires restart to take effect)
+/// Save API key to config file AND update in-memory state immediately
 #[command]
 pub async fn save_api_key(
     api_key: String,
+    config: State<'_, Arc<RwLock<AppConfig>>>,
+    app_dir: State<'_, PathBuf>,
 ) -> Result<String, String> {
-    let researchmate_dir = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join(".researchmate");
+    // Update in-memory config immediately
+    {
+        let mut cfg = config.write().unwrap();
+        cfg.deepseek_api_key = api_key;
+        cfg.save(&app_dir);
+    }
 
-    let config_path = researchmate_dir.join("config.json");
-
-    // Read existing config or create default
-    let mut config: AppConfig = if config_path.exists() {
-        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-        serde_json::from_str(&content).unwrap_or_default()
-    } else {
-        AppConfig::default()
-    };
-
-    config.deepseek_api_key = api_key;
-    config.save(&researchmate_dir);
-
-    Ok("API Key 已保存，请重启应用使其生效。".to_string())
+    Ok("API Key 已保存，立即生效。".to_string())
 }
 
 /// Get all messages for a session
