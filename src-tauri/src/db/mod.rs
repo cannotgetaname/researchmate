@@ -51,6 +51,28 @@ impl Database {
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS document (
+                id          TEXT PRIMARY KEY,
+                project_id  TEXT NOT NULL REFERENCES project(id),
+                filename    TEXT NOT NULL,
+                file_path   TEXT NOT NULL,
+                title       TEXT,
+                authors     TEXT,
+                year        INTEGER,
+                journal     TEXT,
+                doi         TEXT,
+                abstract    TEXT,
+                domain      TEXT,
+                subdomain   TEXT,
+                keywords    TEXT,
+                methodology TEXT,
+                dataset     TEXT,
+                claims      TEXT,
+                chunk_count INTEGER DEFAULT 0,
+                status      TEXT DEFAULT 'pending',
+                created_at  TEXT NOT NULL
+            );
             ",
         )?;
         Ok(())

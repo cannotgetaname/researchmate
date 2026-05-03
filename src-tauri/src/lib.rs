@@ -1,3 +1,4 @@
+mod knowledge;
 mod db;
 mod commands;
 mod llm;
@@ -26,6 +27,10 @@ pub fn run() {
             commands::writing::get_messages,
             commands::writing::get_config,
             commands::writing::save_config,
+            commands::literature::upload_document,
+            commands::literature::search_knowledge,
+            commands::literature::get_documents,
+            commands::literature::delete_document,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
