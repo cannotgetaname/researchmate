@@ -112,12 +112,18 @@ export default function DocumentPanel() {
     setAsking(true);
     setAnswer("");
 
+    let streamed = false;
     const unlisten = await listen<{ delta: string }>("polish-stream", (event) => {
+      streamed = true;
       setAnswer((prev) => prev + event.payload.delta);
     });
 
     try {
-      await invoke("ask_knowledge", { question: q, projectId: "default" });
+      const result = await invoke<string>("ask_knowledge", { question: q, projectId: "default" });
+      if (!streamed) {
+        // count/list queries return directly without streaming
+        setAnswer(result);
+      }
     } catch (e) {
       setAnswer((prev) => prev + `\n\n> 错误：${e}`);
     }
