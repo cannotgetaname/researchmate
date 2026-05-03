@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
+import ReactMarkdown from "react-markdown";
 import { useStreamChat } from "../hooks/useStreamChat";
 
 interface ChatPanelProps {
@@ -65,7 +66,13 @@ export default function ChatPanel({ activeModule, onModuleChange }: ChatPanelPro
             {msg.isStreaming && (
               <span className="timeline-pill thinking">思考中</span>
             )}
-            <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+            {msg.role === "assistant" && !msg.isStreaming ? (
+              <div className="markdown-body">
+                <ReactMarkdown>{msg.content}</ReactMarkdown>
+              </div>
+            ) : (
+              <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
+            )}
           </div>
         ))}
         {isLoading && messages.length === 0 && (

@@ -45,7 +45,7 @@ export default function EditorPanel({
         theme="vs"
         options={{
           fontSize: 16,
-          fontFamily: "var(--font-ui), system-ui, sans-serif",
+          fontFamily: "'PingFang SC', 'Microsoft YaHei', 'Noto Sans SC', var(--font-ui), system-ui, sans-serif",
           lineHeight: 1.8,
           fontWeight: "400",
           wordWrap: "on",
