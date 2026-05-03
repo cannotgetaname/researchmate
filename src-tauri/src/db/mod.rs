@@ -54,7 +54,6 @@ impl Database {
 
             CREATE TABLE IF NOT EXISTS document (
                 id          TEXT PRIMARY KEY,
-                project_id  TEXT NOT NULL REFERENCES project(id),
                 filename    TEXT NOT NULL,
                 file_path   TEXT NOT NULL,
                 title       TEXT,

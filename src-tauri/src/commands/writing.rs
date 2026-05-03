@@ -230,9 +230,7 @@ pub async fn delete_project(
         return Err("不能删除默认项目".to_string());
     }
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM doc_chunk WHERE document_id IN (SELECT id FROM document WHERE project_id = ?1)", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM doc_vector WHERE doc_id IN (SELECT id FROM document WHERE project_id = ?1)", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
-    conn.execute("DELETE FROM document WHERE project_id = ?1", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM project_kb WHERE project_id = ?1", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM session WHERE project_id = ?1", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM project WHERE id = ?1", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
     Ok("已删除".to_string())
