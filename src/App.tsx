@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import TopNav from "./components/TopNav";
 import EditorPanel from "./components/EditorPanel";
 import ChatPanel from "./components/ChatPanel";
+import DocumentPanel from "./components/DocumentPanel";
 import StatusBar from "./components/StatusBar";
 
 interface AppConfig {
@@ -117,12 +118,25 @@ export default function App() {
           onSelectionChange={handleSelectionChange}
           onAddToChat={handleAddToChat}
         />
-        <ChatPanel
-          activeModule={activeModule}
-          onModuleChange={setActiveModule}
-          fillText={fillText}
-          onFillConsumed={handleFillConsumed}
-        />
+        {activeModule === "lit" ? (
+          <div className="chat-panel">
+            <div className="chat-tabs">
+              {[{ key: "write", label: "写作" }, { key: "data", label: "数据" }, { key: "lit", label: "文献" }, { key: "plan", label: "管理" }].map((m) => (
+                <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>
+                  {m.label}
+                </span>
+              ))}
+            </div>
+            <DocumentPanel />
+          </div>
+        ) : (
+          <ChatPanel
+            activeModule={activeModule}
+            onModuleChange={setActiveModule}
+            fillText={fillText}
+            onFillConsumed={handleFillConsumed}
+          />
+        )}
       </div>
 
       <StatusBar wordCount={wordCount} aiStatus="就绪" lastSaved="刚刚" />

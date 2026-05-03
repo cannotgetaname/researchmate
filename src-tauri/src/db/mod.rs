@@ -73,6 +73,9 @@ impl Database {
                 status      TEXT DEFAULT 'pending',
                 created_at  TEXT NOT NULL
             );
+
+            INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
+            VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));
             ",
         )?;
         Ok(())
