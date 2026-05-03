@@ -75,6 +75,54 @@ pub async fn create_session(
     Ok(session)
 }
 
+/// Get current config (masked API key)
+#[command]
+pub async fn get_config(
+    config: State<'_, AppConfig>,
+) -> Result<serde_json::Value, String> {
+    let masked_key = if config.deepseek_api_key.len() > 8 {
+        format!("{}...{}",
+            &config.deepseek_api_key[..4],
+            &config.deepseek_api_key[config.deepseek_api_key.len()-4..]
+        )
+    } else if config.deepseek_api_key.is_empty() {
+        String::new()
+    } else {
+        "****".to_string()
+    };
+
+    Ok(serde_json::json!({
+        "deepseek_api_key_masked": masked_key,
+        "deepseek_base_url": config.deepseek_base_url,
+        "model_name": config.model_name,
+    }))
+}
+
+/// Save API key to config file (requires restart to take effect)
+#[command]
+pub async fn save_api_key(
+    api_key: String,
+) -> Result<String, String> {
+    let researchmate_dir = dirs::home_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."))
+        .join(".researchmate");
+
+    let config_path = researchmate_dir.join("config.json");
+
+    // Read existing config or create default
+    let mut config: AppConfig = if config_path.exists() {
+        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
+        serde_json::from_str(&content).unwrap_or_default()
+    } else {
+        AppConfig::default()
+    };
+
+    config.deepseek_api_key = api_key;
+    config.save(&researchmate_dir);
+
+    Ok("API Key 已保存，请重启应用使其生效。".to_string())
+}
+
 /// Get all messages for a session
 #[command]
 pub async fn get_messages(

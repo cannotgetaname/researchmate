@@ -7,9 +7,9 @@ use db::Database;
 use std::sync::Arc;
 
 pub fn run() {
-    let app_dir = dirs::data_dir()
+    let app_dir = dirs::home_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
-        .join("researchmate");
+        .join(".researchmate");
 
     let database = Database::new(&app_dir).expect("failed to initialize database");
     let db = Arc::new(database);
@@ -22,6 +22,8 @@ pub fn run() {
             commands::writing::polish_text,
             commands::writing::create_session,
             commands::writing::get_messages,
+            commands::writing::get_config,
+            commands::writing::save_api_key,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

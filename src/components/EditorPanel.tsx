@@ -1,5 +1,11 @@
 import { useRef } from "react";
-import Editor, { OnMount, OnChange } from "@monaco-editor/react";
+import Editor, { OnMount, OnChange, loader } from "@monaco-editor/react";
+
+loader.config({
+  paths: {
+    vs: "https://cdn.jsdelivr.net/npm/monaco-editor@0.52.0/min/vs",
+  },
+});
 
 interface EditorPanelProps {
   content: string;
