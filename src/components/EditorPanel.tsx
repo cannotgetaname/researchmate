@@ -44,16 +44,32 @@ export default function EditorPanel({
         onMount={handleEditorDidMount}
         theme="vs"
         options={{
-          fontSize: 15,
-          fontFamily: "var(--font-code), monospace",
-          lineHeight: 1.7,
+          fontSize: 16,
+          fontFamily: "var(--font-ui), system-ui, sans-serif",
+          lineHeight: 1.8,
+          fontWeight: "400",
           wordWrap: "on",
           minimap: { enabled: false },
-          lineNumbers: "on",
-          renderLineHighlight: "line",
+          lineNumbers: "off",
+          lineNumbersMinChars: 0,
+          glyphMargin: false,
+          folding: false,
+          lineDecorationsWidth: 0,
+          renderLineHighlight: "none",
           scrollBeyondLastLine: false,
-          padding: { top: 24, bottom: 24 },
+          padding: { top: 48, bottom: 200 },
           automaticLayout: true,
+          overviewRulerLanes: 0,
+          hideCursorInOverviewRuler: true,
+          overviewRulerBorder: false,
+          occurrencesHighlight: "off",
+          renderWhitespace: "none",
+          rulers: [],
+          matchBrackets: "never",
+          colorDecorators: false,
+          cursorBlinking: "smooth",
+          cursorWidth: 2,
+          smoothScrolling: true,
         }}
       />
     </div>
