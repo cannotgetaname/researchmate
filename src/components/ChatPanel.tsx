@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { useStreamChat } from "../hooks/useStreamChat";
 
 interface ChatPanelProps {
@@ -82,7 +83,7 @@ export default function ChatPanel({
             )}
             {msg.role === "assistant" ? (
               <div className="markdown-body">
-                <ReactMarkdown>{msg.content}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.content}</ReactMarkdown>
               </div>
             ) : (
               <div style={{ whiteSpace: "pre-wrap" }}>{msg.content}</div>
