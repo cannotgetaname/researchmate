@@ -80,7 +80,7 @@ export default function ChatPanel({
             {msg.isStreaming && (
               <span className="timeline-pill thinking">思考中</span>
             )}
-            {msg.role === "assistant" && !msg.isStreaming ? (
+            {msg.role === "assistant" ? (
               <div className="markdown-body">
                 <ReactMarkdown>{msg.content}</ReactMarkdown>
               </div>
