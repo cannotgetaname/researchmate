@@ -483,6 +483,18 @@ fn execute_search(
 }
 
 fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {
+    // Deduplicate document entries by title
+    let mut seen_titles: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut deduped_hits: Vec<&SearchHit> = Vec::new();
+    for h in hits {
+        let key = h.title.clone().unwrap_or_else(|| "未知".to_string());
+        let cnt = seen_titles.entry(key).or_insert(0);
+        *cnt += 1;
+        if *cnt <= 1 {
+            deduped_hits.push(h);
+        }
+    }
+    let hits = deduped_hits;
     if sq.doc_id.is_some() && !hits.is_empty() {
         let title = hits[0].title.as_deref().unwrap_or("未知");
         let mut ctx = format!("**论文：{}**（完整内容）\n\n", title);
@@ -527,7 +539,21 @@ async fn answer_count(
             .unwrap_or(0)
     };
 
-    let ctx = format!("知识库中共有 {} 篇文献（符合条件：{}）", count, describe_query(sq));
+    // Deduplicate by title
+    let unique_count = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let (mut sql, params) = build_doc_filter_sql(project_id, sq);
+        sql = format!("SELECT COUNT(DISTINCT COALESCE(title, filename)) FROM ({})", sql);
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.query_row(&sql, param_refs.as_slice(), |row| row.get::<_, i64>(0)).unwrap_or(count)
+    };
+
+    let dedup_note = if unique_count < count {
+        format!("（去重后 {} 篇，原始 {} 条记录）", unique_count, count)
+    } else {
+        String::new()
+    };
+    let ctx = format!("知识库中共有 {} 篇文献{}（符合条件：{}）", unique_count, dedup_note, describe_query(sq));
     Ok(ctx)
 }
 
@@ -546,12 +572,35 @@ async fn answer_list(
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
-        let mut listing = String::from("文献列表：\n");
-        for (i, doc) in docs.iter().enumerate() {
+        // Deduplicate by title, count occurrences
+        let mut seen: std::collections::HashMap<String, (usize, &Document)> = std::collections::HashMap::new();
+        let mut order: Vec<String> = Vec::new();
+        for doc in &docs {
+            let key = doc.title.clone().unwrap_or_else(|| doc.filename.clone());
+            if let Some((count, _)) = seen.get_mut(&key) {
+                *count += 1;
+            } else {
+                order.push(key.clone());
+                seen.insert(key, (1, doc));
+            }
+        }
+
+        let mut listing = String::new();
+        if order.len() < docs.len() {
+            listing.push_str(&format!("共 {} 篇文献（去重后 {} 篇，原始 {} 条记录）：\n\n", order.len(), order.len(), docs.len()));
+        } else {
+            listing.push_str(&format!("文献列表（{} 篇）：\n\n", docs.len()));
+        }
+        for (i, key) in order.iter().enumerate() {
+            let (cnt, doc) = &seen[key];
             let title = doc.title.as_deref().unwrap_or(&doc.filename);
             let journal = doc.journal.as_deref().unwrap_or("");
             let year = doc.year.map(|y| y.to_string()).unwrap_or_default();
-            listing.push_str(&format!("{}. {} ({}, {})\n", i + 1, title, journal, year));
+            if *cnt > 1 {
+                listing.push_str(&format!("{}. {} ({}, {}) [×{} 份]\n", i + 1, title, journal, year, cnt));
+            } else {
+                listing.push_str(&format!("{}. {} ({}, {})\n", i + 1, title, journal, year));
+            }
         }
         listing
     };
