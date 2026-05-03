@@ -341,9 +341,9 @@ fn execute_search(
         params.push(Box::new(format!("%{}%", auth)));
     }
 
-    // Limit per strategy
-    let limit = if sq.doc_id.is_some() { 50 } else { 15 };
-    sql.push_str(&format!(" LIMIT {}", limit * 3)); // fetch more for scoring, then truncate
+    // Fetch enough candidates for diverse document coverage, then truncate after scoring
+    let limit = if sq.doc_id.is_some() { 50 } else { 30 };
+    sql.push_str(&format!(" LIMIT {}", limit * 5));
 
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
 
@@ -386,16 +386,26 @@ fn execute_search(
     }).collect();
 
     hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
-    hits.truncate(limit);
 
-    // If single-doc query, sort by chunk_index (natural reading order) instead of score
-    if sq.doc_id.is_some() {
-        // We don't have chunk_index in the hit, but we can just keep the score order within the same doc
-        // For single doc, all chunks have similar semantic relevance, so reading order is better
-        // Simplification: keep top hits by score, which works for small docs
+    // Ensure document diversity: take top per-doc first, then fill with remaining
+    let mut diverse: Vec<SearchHit> = Vec::new();
+    let mut seen_docs = std::collections::HashSet::new();
+    for h in &hits {
+        if !seen_docs.contains(&h.document_id) {
+            diverse.push(h.clone());
+            seen_docs.insert(h.document_id.clone());
+        }
     }
+    // Fill remaining with best scoring hits from any doc
+    for h in &hits {
+        if diverse.len() >= limit { break; }
+        if !diverse.iter().any(|d| d.chunk_id == h.chunk_id) {
+            diverse.push(h.clone());
+        }
+    }
+    diverse.truncate(limit);
 
-    Ok(hits)
+    Ok(diverse)
 }
 
 fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {
