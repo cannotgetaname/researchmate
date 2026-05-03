@@ -107,18 +107,17 @@ export default function App() {
       <TopNav projectName="我的论文" onOpenSettings={handleOpenSettings} onOpenAbout={() => setShowAbout(true)} />
       <div className="app-main">
         <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} />
-        {activeModule === "lit" ? (
-          <div className="chat-panel">
-            <div className="chat-tabs">
-              {[{ key: "write", label: "写作" }, { key: "data", label: "数据" }, { key: "lit", label: "文献" }, { key: "plan", label: "管理" }].map((m) => (
-                <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
-              ))}
-            </div>
-            <DocumentPanel />
+        <div style={{ display: activeModule === "lit" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
+          <div className="chat-tabs" style={{ display: "flex", height: "40px", borderBottom: "1px solid var(--color-hairline)", padding: "0 var(--space-sm)", gap: "var(--space-xs)" }}>
+            {[{ key: "write", label: "写作" }, { key: "data", label: "数据" }, { key: "lit", label: "文献" }, { key: "plan", label: "管理" }].map((m) => (
+              <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
+            ))}
           </div>
-        ) : (
+          <DocumentPanel />
+        </div>
+        <div style={{ display: activeModule !== "lit" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
           <ChatPanel activeModule={activeModule} onModuleChange={setActiveModule} fillText={fillText} onFillConsumed={handleFillConsumed} />
-        )}
+        </div>
       </div>
       <StatusBar wordCount={wordCount} aiStatus="就绪" lastSaved="刚刚" />
 
