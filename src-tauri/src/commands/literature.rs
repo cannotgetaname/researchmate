@@ -142,7 +142,7 @@ pub async fn search_knowledge(
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let mut docs_stmt = conn.prepare(
-        "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, chunk_count, status, created_at FROM document WHERE project_id = ?1 AND status = 'ready'"
+        "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at FROM document WHERE project_id = ?1 AND status = 'ready'"
     ).map_err(|e| e.to_string())?;
 
     let docs: Vec<Document> = docs_stmt.query_map(rusqlite::params![project_id], doc_from_row)
