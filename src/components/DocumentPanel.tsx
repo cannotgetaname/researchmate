@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 
@@ -14,10 +14,20 @@ interface DocInfo {
   created_at: string;
 }
 
+interface SearchResult {
+  document: DocInfo;
+  score: number;
+  snippet: string;
+}
+
 export default function DocumentPanel() {
   const [docs, setDocs] = useState<DocInfo[]>([]);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState("");
+  const [query, setQuery] = useState("");
+  const [results, setResults] = useState<SearchResult[] | null>(null);
+  const [searching, setSearching] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = async () => {
     try {
@@ -35,24 +45,18 @@ export default function DocumentPanel() {
       multiple: true,
       filters: [{ name: "PDF", extensions: ["pdf"] }],
     });
-
     if (!selected) return;
 
     setUploading(true);
     setStatus("正在上传...");
-
     for (const path of Array.isArray(selected) ? selected : [selected]) {
       try {
-        await invoke("upload_document", {
-          filePath: path,
-          projectId: "default",
-        });
+        await invoke("upload_document", { filePath: path, projectId: "default" });
         setStatus(`已上传：${path.split("/").pop()}`);
       } catch (e) {
         setStatus(`上传失败：${e}`);
       }
     }
-
     setUploading(false);
     await loadDocs();
   };
@@ -61,123 +65,175 @@ export default function DocumentPanel() {
     try {
       await invoke("delete_document", { docId: id });
       setDocs((prev) => prev.filter((d) => d.id !== id));
+      setResults((prev) => prev?.filter((r) => r.document.id !== id) ?? null);
       setStatus("已删除");
     } catch (e) {
       setStatus(`删除失败：${e}`);
     }
   };
 
+  const handleSearch = async () => {
+    const q = query.trim();
+    if (!q || searching) return;
+    setSearching(true);
+    setStatus("");
+    try {
+      const r = await invoke("search_knowledge", { query: q, projectId: "default" }) as SearchResult[];
+      setResults(r);
+      if (r.length === 0) setStatus("未找到相关文献");
+    } catch (e) {
+      setStatus(`搜索失败：${e}`);
+    }
+    setSearching(false);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") handleSearch();
+  };
+
   return (
-    <div style={{
-      display: "flex", flexDirection: "column", height: "100%",
-      padding: "var(--space-base)",
-    }}>
-      {/* Upload button */}
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "var(--space-base)" }}>
+      {/* Upload */}
       <button
-        onClick={handleUpload}
-        disabled={uploading}
+        onClick={handleUpload} disabled={uploading}
         style={{
-          height: "40px", padding: "0 18px", marginBottom: "var(--space-base)",
+          height: "36px", padding: "0 var(--space-base)", marginBottom: "var(--space-sm)",
           border: "none", borderRadius: "var(--radius-md)",
-          backgroundColor: "var(--color-primary)",
-          color: "var(--color-on-primary)",
-          fontFamily: "var(--font-ui)", fontSize: "14px",
-          fontWeight: 500, cursor: uploading ? "not-allowed" : "pointer",
-          opacity: uploading ? 0.6 : 1,
+          backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)",
+          fontFamily: "var(--font-ui)", fontSize: "14px", fontWeight: 500,
+          cursor: uploading ? "not-allowed" : "pointer", opacity: uploading ? 0.6 : 1,
           width: "100%",
         }}
       >
         {uploading ? "上传中..." : "+ 上传 PDF 文献"}
       </button>
 
+      {/* Search */}
+      <div style={{ display: "flex", gap: "var(--space-xs)", marginBottom: "var(--space-sm)" }}>
+        <input
+          ref={inputRef} type="text" value={query}
+          onChange={(e) => setQuery(e.target.value)} onKeyDown={handleKeyDown}
+          placeholder="搜索文献（按 Enter 检索）..."
+          disabled={docs.length === 0}
+          style={{
+            flex: 1, height: "36px", padding: "0 var(--space-sm)",
+            border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-md)",
+            fontFamily: "var(--font-ui)", fontSize: "13px", outline: "none",
+          }}
+        />
+        <button
+          onClick={handleSearch} disabled={searching || !query.trim()}
+          style={{
+            height: "36px", padding: "0 var(--space-base)",
+            border: "none", borderRadius: "var(--radius-md)",
+            backgroundColor: "var(--color-ink)", color: "var(--color-canvas)",
+            fontFamily: "var(--font-ui)", fontSize: "13px", fontWeight: 500,
+            cursor: "pointer", opacity: searching ? 0.6 : 1,
+          }}
+        >
+          {searching ? "..." : "搜索"}
+        </button>
+      </div>
+
       {status && (
-        <div style={{
-          fontSize: "12px", color: "var(--color-muted)",
-          marginBottom: "var(--space-sm)",
-        }}>
+        <div style={{ fontSize: "12px", color: "var(--color-muted)", marginBottom: "var(--space-sm)" }}>
           {status}
         </div>
       )}
 
-      {/* Document list */}
       <div style={{ flex: 1, overflowY: "auto" }}>
-        {docs.length === 0 && (
-          <div style={{
-            textAlign: "center", color: "var(--color-muted)",
-            marginTop: "var(--space-xxl)", fontSize: "13px",
-          }}>
-            还没有上传文献
-          </div>
-        )}
-
-        {docs.map((doc) => (
-          <div
-            key={doc.id}
-            style={{
-              padding: "var(--space-sm)", marginBottom: "var(--space-sm)",
-              border: "1px solid var(--color-hairline)",
-              borderRadius: "var(--radius-md)",
-              backgroundColor: "var(--color-surface-card)",
-              cursor: "default",
-              transition: "border-color 0.1s",
-            }}
-            onMouseEnter={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "var(--color-hairline-strong)";
-            }}
-            onMouseLeave={(e) => {
-              (e.currentTarget as HTMLElement).style.borderColor = "var(--color-hairline)";
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{
-                  fontWeight: 600, fontSize: "14px",
-                  color: "var(--color-ink)", marginBottom: "var(--space-xxs)",
-                  overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-                }}>
-                  {doc.title ?? doc.filename}
-                </div>
-
-                <div style={{ fontSize: "12px", color: "var(--color-muted)" }}>
-                  {doc.authors && (
-                    <span>{(() => {
-                      try {
-                        const a = JSON.parse(doc.authors);
-                        return a.slice(0, 2).map((x: {name: string}) => x.name).join(", ");
-                      } catch { return doc.authors; }
-                    })()}</span>
-                  )}
-                  {doc.year && <span> ({doc.year})</span>}
-                </div>
-
-                <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-xxs)", fontSize: "11px", color: "var(--color-muted-soft)" }}>
-                  {doc.journal && <span>{doc.journal}</span>}
-                  {doc.domain && (
-                    <span style={{
-                      padding: "0 6px", borderRadius: "var(--radius-pill)",
-                      backgroundColor: "var(--color-canvas-soft)",
+        {/* Search results */}
+        {results !== null ? (
+          results.length === 0 ? (
+            <div style={{ textAlign: "center", color: "var(--color-muted)", marginTop: "var(--space-xl)", fontSize: "13px" }}>
+              无匹配结果
+            </div>
+          ) : (
+            results.map((r) => (
+              <div
+                key={r.document.id}
+                style={{
+                  padding: "var(--space-sm)", marginBottom: "var(--space-sm)",
+                  border: "1px solid var(--color-hairline)",
+                  borderRadius: "var(--radius-md)",
+                  backgroundColor: "var(--color-surface-card)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{
+                      fontWeight: 600, fontSize: "14px", color: "var(--color-ink)",
+                      marginBottom: "var(--space-xxs)",
+                      overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                     }}>
-                      {doc.domain}
-                    </span>
-                  )}
+                      {r.document.title ?? r.document.filename}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--color-muted)", marginBottom: "var(--space-xxs)" }}>
+                      {r.document.authors && (() => {
+                        try { return JSON.parse(r.document.authors).slice(0, 2).map((x: {name: string}) => x.name).join(", "); }
+                        catch { return r.document.authors; }
+                      })()}
+                      {r.document.year && ` (${r.document.year})`}
+                      {r.document.journal && ` — ${r.document.journal}`}
+                    </div>
+                    <div style={{ fontSize: "12px", color: "var(--color-muted)", lineHeight: 1.5 }}>
+                      {r.snippet}
+                    </div>
+                  </div>
+                  <span style={{
+                    fontSize: "11px", fontWeight: 600, flexShrink: 0, marginLeft: "var(--space-sm)",
+                    padding: "2px 8px", borderRadius: "var(--radius-pill)",
+                    backgroundColor: r.score > 0.5 ? "var(--color-canvas-soft)" : "var(--color-hairline-soft)",
+                    color: r.score > 0.5 ? "var(--color-success)" : "var(--color-muted)",
+                  }}>
+                    {(r.score * 100).toFixed(0)}%
+                  </span>
                 </div>
               </div>
-
-              <button
-                onClick={() => handleDelete(doc.id)}
-                style={{
-                  background: "none", border: "none",
-                  color: "var(--color-muted-soft)", cursor: "pointer",
-                  fontSize: "16px", padding: "0 4px", lineHeight: 1,
-                  flexShrink: 0,
-                }}
-                title="删除"
-              >
-                ×
-              </button>
-            </div>
+            ))
+          )
+        ) : docs.length === 0 ? (
+          <div style={{ textAlign: "center", color: "var(--color-muted)", marginTop: "var(--space-xxl)", fontSize: "13px" }}>
+            还没有上传文献
           </div>
-        ))}
+        ) : (
+          docs.map((doc) => (
+            <div
+              key={doc.id}
+              style={{
+                padding: "var(--space-sm)", marginBottom: "var(--space-sm)",
+                border: "1px solid var(--color-hairline)",
+                borderRadius: "var(--radius-md)",
+                backgroundColor: "var(--color-surface-card)",
+                cursor: "default", transition: "border-color 0.1s",
+              }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--color-hairline-strong)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--color-hairline)"; }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 600, fontSize: "14px", color: "var(--color-ink)", marginBottom: "var(--space-xxs)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {doc.title ?? doc.filename}
+                  </div>
+                  <div style={{ fontSize: "12px", color: "var(--color-muted)" }}>
+                    {doc.authors && (() => {
+                      try { return JSON.parse(doc.authors).slice(0, 2).map((x: {name: string}) => x.name).join(", "); }
+                      catch { return doc.authors; }
+                    })()}
+                    {doc.year && ` (${doc.year})`}
+                  </div>
+                  <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-xxs)", fontSize: "11px", color: "var(--color-muted-soft)" }}>
+                    {doc.journal && <span>{doc.journal}</span>}
+                    {doc.domain && <span style={{ padding: "0 6px", borderRadius: "var(--radius-pill)", backgroundColor: "var(--color-canvas-soft)" }}>{doc.domain}</span>}
+                  </div>
+                </div>
+                <button onClick={() => handleDelete(doc.id)} style={{ background: "none", border: "none", color: "var(--color-muted-soft)", cursor: "pointer", fontSize: "16px", padding: "0 4px", lineHeight: 1, flexShrink: 0 }} title="删除">
+                  ×
+                </button>
+              </div>
+            </div>
+          ))
+        )}
       </div>
     </div>
   );
