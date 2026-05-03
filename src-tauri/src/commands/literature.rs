@@ -519,7 +519,9 @@ async fn answer_count(
     let count = {
         let conn = db.conn.lock().map_err(|e| e.to_string())?;
         let (mut sql, params) = build_doc_filter_sql(project_id, sq);
-        sql = sql.replace("SELECT id FROM", "SELECT COUNT(*) FROM");
+        // Replace full column list with COUNT(*)
+        sql = format!("SELECT COUNT(*) FROM document WHERE {}",
+            sql.split("WHERE").nth(1).unwrap_or("1=1"));
         let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
         conn.query_row(&sql, param_refs.as_slice(), |row| row.get::<_, i64>(0))
             .unwrap_or(0)
@@ -563,7 +565,8 @@ async fn answer_list(
 
 /// Build WHERE clause for document filtering (reusable across count/list/search)
 fn build_doc_filter_sql(project_id: &str, sq: &SearchQuery) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
-    let mut sql = String::from("SELECT id FROM document WHERE project_id = ?1 AND status = 'ready'");
+    let all_cols = "id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at";
+    let mut sql = format!("SELECT {} FROM document WHERE project_id = ?1 AND status = 'ready'", all_cols);
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
 
     if let Some(ref j) = sq.journal {
