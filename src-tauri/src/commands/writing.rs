@@ -175,6 +175,69 @@ pub async fn save_config(
     Ok("配置已保存，立即生效。".to_string())
 }
 
+/// List all projects
+#[command]
+pub async fn list_projects(
+    db: State<'_, Arc<Database>>,
+) -> Result<Vec<crate::db::models::Project>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, created_at, updated_at FROM project ORDER BY created_at ASC"
+    ).map_err(|e| e.to_string())?;
+    let projects = stmt.query_map([], |row| {
+        Ok(crate::db::models::Project {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            created_at: row.get(3)?,
+            updated_at: row.get(4)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(projects)
+}
+
+/// Create a new project
+#[command]
+pub async fn create_project(
+    name: String,
+    description: Option<String>,
+    db: State<'_, Arc<Database>>,
+) -> Result<crate::db::models::Project, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+    let project = crate::db::models::Project {
+        id: uuid::Uuid::new_v4().to_string(),
+        name,
+        description,
+        created_at: now.clone(),
+        updated_at: now,
+    };
+    conn.execute(
+        "INSERT INTO project (id, name, description, created_at, updated_at) VALUES (?1,?2,?3,?4,?5)",
+        rusqlite::params![project.id, project.name, project.description, project.created_at, project.updated_at],
+    ).map_err(|e| e.to_string())?;
+    Ok(project)
+}
+
+/// Delete a project and all its data
+#[command]
+pub async fn delete_project(
+    project_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    if project_id == "default" {
+        return Err("不能删除默认项目".to_string());
+    }
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM doc_chunk WHERE document_id IN (SELECT id FROM document WHERE project_id = ?1)", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM doc_vector WHERE doc_id IN (SELECT id FROM document WHERE project_id = ?1)", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM document WHERE project_id = ?1", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM session WHERE project_id = ?1", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM project WHERE id = ?1", rusqlite::params![project_id]).map_err(|e| e.to_string())?;
+    Ok("已删除".to_string())
+}
+
 /// Get all messages for a session
 #[command]
 pub async fn get_messages(

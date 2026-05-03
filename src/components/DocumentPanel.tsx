@@ -23,7 +23,7 @@ interface SearchResult {
   snippet: string;
 }
 
-export default function DocumentPanel() {
+export default function DocumentPanel({ projectId }: { projectId: string }) {
   const [docs, setDocs] = useState<DocInfo[]>([]);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState("");
@@ -38,7 +38,7 @@ export default function DocumentPanel() {
 
   const loadDocs = async () => {
     try {
-      const result = await invoke("get_documents", { projectId: "default" }) as DocInfo[];
+      const result = await invoke("get_documents", { projectId: projectId }) as DocInfo[];
       setDocs(result);
     } catch (e) {
       setStatus(`加载文献列表失败：${e}`);
@@ -64,7 +64,7 @@ export default function DocumentPanel() {
       log.push(`[${i + 1}/${files.length}] ${name} — 处理中...`);
       setUploadLog([...log]);
       try {
-        await invoke("upload_document", { filePath: files[i], projectId: "default" });
+        await invoke("upload_document", { filePath: files[i], projectId: projectId });
         log[i] = `[${i + 1}/${files.length}] ${name} — ✓ 完成（${i + 1}/${files.length}）`;
       } catch (e) {
         log[i] = `[${i + 1}/${files.length}] ${name} — ✗ 失败：${e}`;
@@ -93,7 +93,7 @@ export default function DocumentPanel() {
     setSearching(true);
     setStatus("");
     try {
-      const r = await invoke("search_knowledge", { query: q, projectId: "default" }) as SearchResult[];
+      const r = await invoke("search_knowledge", { query: q, projectId: projectId }) as SearchResult[];
       setResults(r);
       if (r.length === 0) setStatus("未找到相关文献");
     } catch (e) {
@@ -119,7 +119,7 @@ export default function DocumentPanel() {
     });
 
     try {
-      const result = await invoke<string>("ask_knowledge", { question: q, projectId: "default" });
+      const result = await invoke<string>("ask_knowledge", { question: q, projectId });
       if (!streamed) {
         // count/list queries return directly without streaming
         setAnswer(result);
@@ -250,7 +250,7 @@ export default function DocumentPanel() {
                 border: "1px solid var(--color-hairline)",
                 borderRadius: "var(--radius-md)",
                 backgroundColor: "var(--color-surface-card)",
-                cursor: "default", transition: "border-color 0.1s",
+                cursor: projectId, transition: "border-color 0.1s",
               }}
               onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--color-hairline-strong)"; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.borderColor = "var(--color-hairline)"; }}

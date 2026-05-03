@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import TopNav from "./components/TopNav";
 import EditorPanel from "./components/EditorPanel";
@@ -40,13 +40,19 @@ const selectS: React.CSSProperties = {
   fontFamily: "var(--font-ui)",
 };
 
+interface ProjectInfo { id: string; name: string; }
+
 export default function App() {
   const [content, setContent] = useState("");
   const [activeModule, setActiveModule] = useState("write");
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
+  const [showNewProject, setShowNewProject] = useState(false);
   const [fillText, setFillText] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [projects, setProjects] = useState<ProjectInfo[]>([{ id: "default", name: "默认课题" }]);
+  const [activeProject, setActiveProject] = useState("default");
+  const [newProjectName, setNewProjectName] = useState("");
 
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [apiKey, setApiKey] = useState("");
@@ -64,6 +70,24 @@ export default function App() {
   const handleSelectionChange = useCallback(() => {}, []);
   const handleAddToChat = useCallback((text: string) => { setFillText(text); }, []);
   const handleFillConsumed = useCallback(() => { setFillText(""); }, []);
+
+  const loadProjects = async () => {
+    try {
+      const list = await invoke("list_projects") as ProjectInfo[];
+      setProjects(list);
+    } catch {}
+  };
+  useEffect(() => { loadProjects(); }, []);
+
+  const handleCreateProject = async () => {
+    if (!newProjectName.trim()) return;
+    try {
+      await invoke("create_project", { name: newProjectName.trim(), description: null });
+      setNewProjectName("");
+      setShowNewProject(false);
+      await loadProjects();
+    } catch (e) { alert(`创建失败：${e}`); }
+  };
 
   const handleOpenSettings = async () => {
     setShowSettings(true); setSaveMsg(""); setApiKey("");
@@ -104,7 +128,12 @@ export default function App() {
 
   return (
     <div className="app-container">
-      <TopNav projectName="我的论文" onOpenSettings={handleOpenSettings} onOpenAbout={() => setShowAbout(true)} />
+      <TopNav
+        projects={projects} activeProjectId={activeProject}
+        onSwitchProject={setActiveProject}
+        onCreateProject={() => setShowNewProject(true)}
+        onOpenSettings={handleOpenSettings} onOpenAbout={() => setShowAbout(true)}
+      />
       <div className="app-main">
         <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} />
         <div style={{ display: activeModule === "lit" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
@@ -113,13 +142,27 @@ export default function App() {
               <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
             ))}
           </div>
-          <DocumentPanel />
+          <DocumentPanel projectId={activeProject} />
         </div>
         <div style={{ display: activeModule !== "lit" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
           <ChatPanel activeModule={activeModule} onModuleChange={setActiveModule} fillText={fillText} onFillConsumed={handleFillConsumed} />
         </div>
       </div>
       <StatusBar wordCount={wordCount} aiStatus="就绪" lastSaved="刚刚" />
+
+      {/* New Project Dialog */}
+      {showNewProject && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }} onClick={() => setShowNewProject(false)}>
+          <div style={{ backgroundColor: "var(--color-surface-card)", borderRadius: "var(--radius-lg)", padding: "var(--space-xl)", width: "360px", border: "1px solid var(--color-hairline)" }} onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: "var(--space-base)", fontSize: "16px" }}>新建课题</h3>
+            <input type="text" value={newProjectName} placeholder="课题名称" onChange={(e) => setNewProjectName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && handleCreateProject()} style={{ ...inputS, marginBottom: "var(--space-sm)" }} autoFocus />
+            <div style={{ display: "flex", gap: "var(--space-sm)", justifyContent: "flex-end" }}>
+              <button className="topnav-btn" onClick={() => { setShowNewProject(false); setNewProjectName(""); }}>取消</button>
+              <button style={{ height: "36px", padding: "0 18px", border: "none", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)", fontFamily: "var(--font-ui)", fontSize: "14px", fontWeight: 500, cursor: "pointer" }} onClick={handleCreateProject}>创建</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Settings Modal */}
       {showSettings && (
