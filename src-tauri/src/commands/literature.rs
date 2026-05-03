@@ -230,7 +230,7 @@ pub async fn ask_knowledge(
         let title = doc.title.as_deref().unwrap_or(&doc.filename);
         let snippet = doc.full_text.as_deref()
             .unwrap_or(doc.abstract_.as_deref().unwrap_or(""))
-            .chars().take(3000).collect::<String>();
+            .chars().take(8000).collect::<String>();
         context.push_str(&format!(
             "--- 文献{} (相似度: {:.0}%) ---\n标题: {}\n内容:\n{}\n\n",
             i + 1, score * 100.0, title, snippet
