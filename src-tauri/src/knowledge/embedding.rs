@@ -13,53 +13,59 @@ struct EmbedResponse {
     embeddings: Vec<Vec<f32>>,
 }
 
-/// Generate embedding vector. Dispatches to configured provider.
+/// Generate embedding for a single text
 pub async fn embed_text(text: &str, config: &AppConfig) -> Result<Vec<f32>, String> {
     match config.embedding_provider.as_str() {
-        "openai" => embed_via_openai(text, config).await,
-        _ => embed_via_ollama(text, config).await,
+        "openai" => embed_via_openai_batch(&[text], config).await
+            .map(|mut v| v.pop().unwrap_or_default()),
+        _ => embed_via_ollama_batch(&[text], config).await
+            .map(|mut v| v.pop().unwrap_or_default()),
     }
 }
 
-/// Ollama local embedding
-async fn embed_via_ollama(text: &str, config: &AppConfig) -> Result<Vec<f32>, String> {
+/// Batch embed multiple texts in a single API call
+pub async fn embed_batch(texts: &[String], config: &AppConfig) -> Result<Vec<Vec<f32>>, String> {
+    if texts.is_empty() { return Ok(vec![]); }
+    let refs: Vec<&str> = texts.iter().map(|s| s.as_str()).collect();
+    match config.embedding_provider.as_str() {
+        "openai" => embed_via_openai_batch(&refs, config).await,
+        _ => embed_via_ollama_batch(&refs, config).await,
+    }
+}
+
+/// Ollama batch embedding — all chunks in one request
+async fn embed_via_ollama_batch(texts: &[&str], config: &AppConfig) -> Result<Vec<Vec<f32>>, String> {
     let url = format!("{}/api/embed", config.embedding_base_url);
     let body = EmbedRequest {
         model: &config.embedding_model,
-        input: vec![text],
+        input: texts.to_vec(),
     };
 
-    let client = reqwest::Client::new();
-    let resp = client
+    let resp = reqwest::Client::new()
         .post(&url)
         .json(&body)
+        .timeout(std::time::Duration::from_secs(120))
         .send()
         .await
         .map_err(|e| format!("Ollama 连接失败 ({}): {}", url, e))?;
 
     if !resp.status().is_success() {
         return Err(format!(
-            "Ollama embedding 失败 ({}): {} — 请确认 {} 模型已拉取 (ollama pull {})",
+            "Ollama embedding 失败 ({}): {}",
             resp.status(),
             resp.text().await.unwrap_or_default(),
-            config.embedding_model,
-            config.embedding_model,
         ));
     }
 
     let data: EmbedResponse = resp.json().await
         .map_err(|e| format!("Ollama 响应解析失败: {}", e))?;
 
-    data.embeddings.into_iter().next()
-        .ok_or("Ollama 未返回嵌入向量".to_string())
+    Ok(data.embeddings)
 }
 
-/// OpenAI-compatible embedding API (DeepSeek, SiliconFlow, etc.)
-async fn embed_via_openai(text: &str, config: &AppConfig) -> Result<Vec<f32>, String> {
-    use async_openai::{
-        types::CreateEmbeddingRequestArgs,
-        Client,
-    };
+/// OpenAI-compatible batch embedding
+async fn embed_via_openai_batch(texts: &[&str], config: &AppConfig) -> Result<Vec<Vec<f32>>, String> {
+    use async_openai::{types::CreateEmbeddingRequestArgs, Client};
 
     let openai_config = async_openai::config::OpenAIConfig::new()
         .with_api_base(&config.embedding_base_url)
@@ -69,18 +75,13 @@ async fn embed_via_openai(text: &str, config: &AppConfig) -> Result<Vec<f32>, St
 
     let request = CreateEmbeddingRequestArgs::default()
         .model(&config.embedding_model)
-        .input([text])
+        .input(texts.to_vec())
         .build()
         .map_err(|e| format!("构建 embedding 请求失败：{}", e))?;
 
     let response = client.embeddings().create(request).await
         .map_err(|e| format!("Embedding API 调用失败：{}", e))?;
 
-    let vec = response.data.first()
-        .ok_or("API 未返回嵌入向量")?
-        .embedding.iter()
-        .map(|f| *f as f32)
-        .collect();
-
-    Ok(vec)
+    Ok(response.data.into_iter().map(|d| d.embedding.into_iter().map(|f| f as f32).collect()).collect())
 }
+

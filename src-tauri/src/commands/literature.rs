@@ -57,13 +57,11 @@ pub async fn upload_document(
     }
     let chunk_count = chunks.len() as i32;
 
-    // Generate embeddings for each chunk
-    let mut chunk_vectors: Vec<String> = Vec::new();
-    for (i, chunk) in chunks.iter().enumerate() {
-        let v = embedding::embed_text(chunk, &cfg).await
-            .map_err(|e| format!("嵌入第{}块失败: {}", i + 1, e))?;
-        chunk_vectors.push(serde_json::to_string(&v).map_err(|e| e.to_string())?);
-    }
+    // Batch embed all chunks in one API call
+    let chunk_vectors: Vec<String> = embedding::embed_batch(&chunks, &cfg).await?
+        .into_iter()
+        .map(|v| serde_json::to_string(&v).map_err(|e| e.to_string()))
+        .collect::<Result<Vec<_>, _>>()?;
 
     // Generate document-level vector from title + abstract
     let doc_embed_text = {
