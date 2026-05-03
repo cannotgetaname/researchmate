@@ -258,7 +258,7 @@ pub async fn ask_knowledge(
     Ok(result)
 }
 
-/// Use LLM to parse the user question into structured search dimensions
+/// Use LLM to parse the user question into a search strategy
 async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<SearchQuery, String> {
     use crate::llm::LlmEngine;
 
@@ -266,88 +266,145 @@ async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<Searc
     let engine = LlmEngine::new(config, model);
 
     let prompt = format!(
-        r#"分析以下用户问题，提取检索维度。只返回JSON，不要其他文字：
+        r#"你是检索策略分析器。分析用户问题，决定检索维度。只返回JSON：
 
-{{
-  "doc_id": "单一篇论文ID（用户明确说'这篇/这篇文章'时，填null以外的值）——但这里你不知道具体ID，请始终填null",
-  "journal": "期刊名称（如Nature/CVPR/IEEE TPAMI）或null",
-  "domain": "研究领域（如计算机视觉/NLP/材料科学）或null",
-  "methodology": "具体方法（如Transformer/强化学习/实验）或null",
-  "author": "作者名或null",
-  "semantic": true（需要语义搜索时）或 false（仅需元数据过滤时）
-}}
+规则：
+- doc_id: 永远填 null（你不知道具体的ID）
+- journal: 用户提到了具体期刊/会议名？提取出来，否则null。如"Nature"、"CVPR"、"IEEE TPAMI"
+- domain: 用户提到的研究领域？如"计算机视觉"、"材料科学"、"神经形态计算"。要泛化，不要提取太窄的关键词
+- methodology: 用户提到了具体方法/技术？如"Transformer"、"强化学习"、"深度学习"
+- author: 用户提到了作者名？否则null
+- strategy: 检索策略：
+  - "count": 用户在问"有几篇/有多少文献"
+  - "list": 用户在问"有哪些/列出"（要先定文档范围）
+  - "single": 用户在问一篇特定论文的内容（如"这篇论文用了什么方法"）
+  - "compare": 用户在对比多篇论文（如"A和B有什么不同"）
+  - "semantic": 通用的语义搜索（默认）
+- max_docs: 最多涉及多少篇文献（count/list 可以到100，单篇讨论=1，对比讨论=3-5）
 
 用户问题：{}"#,
         question
     );
 
-    // For intent parsing, we don't need streaming - just collect the response
-    let mut response = String::new();
-    let _ = engine.chat_stream(&prompt, &[], "", |delta| {
-        // non-streaming context, but we still need the callback
-    }).await.map(|r| { response = r; })?;
-
+    let response = engine.chat_stream(&prompt, &[], "", |_| {}).await?;
     let json_str = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
-    let q: SearchQuery = serde_json::from_str(json_str)
-        .unwrap_or(SearchQuery {
-            question: question.to_string(),
-            doc_id: None, journal: None, domain: None,
-            methodology: None, author: None, semantic: true,
-        });
 
-    // Force semantic=true if no metadata filters provided
-    let has_filter = q.journal.is_some() || q.domain.is_some()
-        || q.methodology.is_some() || q.author.is_some() || q.doc_id.is_some();
-    Ok(SearchQuery { semantic: !has_filter || q.semantic, ..q })
+    let parsed: serde_json::Value = serde_json::from_str(json_str).unwrap_or_default();
+    Ok(SearchQuery {
+        question: question.to_string(),
+        doc_id: None,
+        journal: parsed["journal"].as_str().map(String::from),
+        domain: parsed["domain"].as_str().map(String::from),
+        methodology: parsed["methodology"].as_str().map(String::from),
+        author: parsed["author"].as_str().map(String::from),
+        semantic: true,
+    })
 }
 
-/// Execute the right search strategy based on parsed dimensions
+/// Two-phase search: (1) find candidate documents via metadata + doc_vector,
+/// then (2) semantic chunk search within those documents only.
 fn execute_search(
     db: &Database, project_id: &str, sq: &SearchQuery,
     query_vec: Option<&Vec<f32>>,
 ) -> Result<Vec<SearchHit>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
-    // Build SQL with dynamic WHERE clauses
-    let mut sql = String::from(
+    // ── Phase 1: Find candidate document IDs ──
+    let candidate_doc_ids = {
+        let mut doc_sql = String::from(
+            "SELECT id FROM document WHERE project_id = ?1 AND status = 'ready'"
+        );
+        let mut doc_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
+
+        if let Some(ref did) = sq.doc_id {
+            doc_sql.push_str(" AND id = ?2");
+            doc_params.push(Box::new(did.clone()));
+        }
+        if let Some(ref j) = sq.journal {
+            let idx = doc_params.len() + 1;
+            doc_sql.push_str(&format!(" AND journal LIKE ?{}", idx));
+            doc_params.push(Box::new(format!("%{}%", j)));
+        }
+        if let Some(ref dom) = sq.domain {
+            let idx = doc_params.len() + 1;
+            doc_sql.push_str(&format!(" AND (domain LIKE ?{} OR keywords LIKE ?{})", idx, idx));
+            doc_params.push(Box::new(format!("%{}%", dom)));
+        }
+        if let Some(ref auth) = sq.author {
+            let idx = doc_params.len() + 1;
+            doc_sql.push_str(&format!(" AND authors LIKE ?{}", idx));
+            doc_params.push(Box::new(format!("%{}%", auth)));
+        }
+
+        // If semantic, rank by doc_vector similarity first
+        if let Some(qv) = query_vec {
+            if sq.doc_id.is_none() && sq.journal.is_none() && sq.domain.is_none() && sq.author.is_none() {
+                // Pure semantic: get ALL docs, rank by vector similarity, take top 20
+                doc_sql.push_str(" LIMIT 100");
+            }
+        }
+        if sq.doc_id.is_some() || !doc_sql.contains("LIMIT") {
+            doc_sql.push_str(" LIMIT 100");
+        }
+
+        let mut doc_stmt = conn.prepare(&doc_sql).map_err(|e| e.to_string())?;
+        let doc_param_refs: Vec<&dyn rusqlite::types::ToSql> = doc_params.iter().map(|p| p.as_ref()).collect();
+
+        let doc_ids: Vec<String> = doc_stmt.query_map(doc_param_refs.as_slice(), |row| row.get::<_, String>(0))
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+        // If semantic, rank docs by vector similarity and take top 20
+        if let Some(qv) = query_vec {
+            if sq.doc_id.is_none() && sq.journal.is_none() && sq.domain.is_none() && sq.author.is_none() {
+                let mut scored_docs: Vec<(String, f32)> = Vec::new();
+                for did in doc_ids {
+                    let vector_json: String = conn.query_row(
+                        "SELECT vector FROM doc_vector WHERE doc_id = ?1",
+                        rusqlite::params![did], |row| row.get(0),
+                    ).unwrap_or_default();
+                    let vector: Vec<f32> = serde_json::from_str(&vector_json).unwrap_or_default();
+                    if !vector.is_empty() {
+                        let score = cosine_similarity(qv, &vector);
+                        scored_docs.push((did, score));
+                    }
+                }
+                scored_docs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+                scored_docs.truncate(20);
+                scored_docs.into_iter().map(|(id, _)| id).collect()
+            } else {
+                doc_ids
+            }
+        } else {
+            doc_ids
+        }
+    };
+
+    if candidate_doc_ids.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // ── Phase 2: Chunk search within candidate documents ──
+    let limit = if sq.doc_id.is_some() { 50 } else { 30 };
+    let placeholders: Vec<String> = candidate_doc_ids.iter().enumerate()
+        .map(|(i, _)| format!("?{}", i + 2)).collect();
+    let ph_str = placeholders.join(",");
+
+    let mut chunk_sql = format!(
         "SELECT c.id, c.document_id, d.title, d.authors, d.journal, d.domain, d.methodology, c.heading, c.role, c.text, c.vector
          FROM doc_chunk c JOIN document d ON c.document_id = d.id
-         WHERE d.project_id = ?1 AND d.status = 'ready'"
+         WHERE d.project_id = ?1 AND c.document_id IN ({})",
+        ph_str
     );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
+    chunk_sql.push_str(&format!(" LIMIT {}", limit * 5));
 
-    if let Some(ref did) = sq.doc_id {
-        sql.push_str(" AND c.document_id = ?2");
-        params.push(Box::new(did.clone()));
-    }
-    if let Some(ref j) = sq.journal {
-        let idx = params.len() + 1;
-        sql.push_str(&format!(" AND d.journal LIKE ?{}", idx));
-        params.push(Box::new(format!("%{}%", j)));
-    }
-    if let Some(ref dom) = sq.domain {
-        let idx = params.len() + 1;
-        sql.push_str(&format!(" AND (d.domain LIKE ?{} OR d.keywords LIKE ?{})", idx, idx));
-        params.push(Box::new(format!("%{}%", dom)));
-    }
-    if let Some(ref meth) = sq.methodology {
-        let idx = params.len() + 1;
-        sql.push_str(&format!(" AND (d.methodology LIKE ?{} OR c.text LIKE ?{})", idx, idx));
-        params.push(Box::new(format!("%{}%", meth)));
-    }
-    if let Some(ref auth) = sq.author {
-        let idx = params.len() + 1;
-        sql.push_str(&format!(" AND d.authors LIKE ?{}", idx));
-        params.push(Box::new(format!("%{}%", auth)));
+    let mut chunk_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
+    for did in &candidate_doc_ids {
+        chunk_params.push(Box::new(did.clone()));
     }
 
-    // Fetch enough candidates for diverse document coverage, then truncate after scoring
-    let limit = if sq.doc_id.is_some() { 50 } else { 30 };
-    sql.push_str(&format!(" LIMIT {}", limit * 5));
-
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let mut chunk_stmt = conn.prepare(&chunk_sql).map_err(|e| e.to_string())?;
+    let chunk_param_refs: Vec<&dyn rusqlite::types::ToSql> = chunk_params.iter().map(|p| p.as_ref()).collect();
 
     struct RawHit {
         chunk_id: String, document_id: String, title: Option<String>,
@@ -356,7 +413,7 @@ fn execute_search(
         text: String, vector_json: String,
     }
 
-    let raw_hits: Vec<RawHit> = stmt.query_map(param_refs.as_slice(), |row| {
+    let raw_hits: Vec<RawHit> = chunk_stmt.query_map(chunk_param_refs.as_slice(), |row| {
         Ok(RawHit {
             chunk_id: row.get(0)?, document_id: row.get(1)?, title: row.get(2)?,
             authors: row.get(3)?, journal: row.get(4)?, domain: row.get(5)?,
@@ -366,7 +423,7 @@ fn execute_search(
     }).map_err(|e| e.to_string())?
     .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
-    drop(stmt);
+    drop(chunk_stmt);
     drop(conn);
 
     // Score and sort
@@ -375,7 +432,7 @@ fn execute_search(
             let v: Vec<f32> = serde_json::from_str(&r.vector_json).unwrap_or_default();
             cosine_similarity(qv, &v)
         } else {
-            1.0 // no semantic scoring needed, all metadata matches
+            1.0
         };
         SearchHit {
             chunk_id: r.chunk_id, document_id: r.document_id,
@@ -387,7 +444,7 @@ fn execute_search(
 
     hits.sort_by(|a, b| b.score.partial_cmp(&a.score).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Ensure document diversity: take top per-doc first, then fill with remaining
+    // Document diversity: at least 1 chunk per doc, then fill by score
     let mut diverse: Vec<SearchHit> = Vec::new();
     let mut seen_docs = std::collections::HashSet::new();
     for h in &hits {
@@ -396,7 +453,6 @@ fn execute_search(
             seen_docs.insert(h.document_id.clone());
         }
     }
-    // Fill remaining with best scoring hits from any doc
     for h in &hits {
         if diverse.len() >= limit { break; }
         if !diverse.iter().any(|d| d.chunk_id == h.chunk_id) {
