@@ -20,16 +20,17 @@ fn extract_native(path: &Path) -> Result<String, String> {
 fn extract_with_opendataloader(path: &Path, config: &AppConfig) -> Result<String, String> {
     let script = format!(
         r#"
-import json, sys
+import sys
 try:
     import opendataloader_pdf
-    result = opendataloader_pdf.convert(
+    opendataloader_pdf.convert(
         input_path=["{}"],
-        format="json"
+        format="text",
+        to_stdout=True,
     )
-    print(json.dumps({{"ok": True, "data": result}}))
 except Exception as e:
-    print(json.dumps({{"ok": False, "error": str(e)}}))
+    print(f"ERROR: {{e}}", file=sys.stderr)
+    sys.exit(1)
 "#,
         path.to_string_lossy()
     );
@@ -45,15 +46,9 @@ except Exception as e:
         return Err(format!("OpenDataLoader 失败：{}", stderr));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(&stdout)
-        .map_err(|e| format!("OpenDataLoader 输出解析失败：{}", e))?;
-
-    if parsed["ok"].as_bool().unwrap_or(false) {
-        // For now, flatten JSON to text; later we parse the structured output
-        Ok(parsed["data"].to_string())
-    } else {
-        let err = parsed["error"].as_str().unwrap_or("未知错误");
-        Err(format!("OpenDataLoader: {}", err))
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    if text.trim().is_empty() {
+        return Err("OpenDataLoader 返回空内容".to_string());
     }
+    Ok(text)
 }
