@@ -30,6 +30,7 @@ export default function DocumentPanel() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [uploadLog, setUploadLog] = useState<string[]>([]);
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [asking, setAsking] = useState(false);
@@ -53,16 +54,24 @@ export default function DocumentPanel() {
     });
     if (!selected) return;
 
+    const files = Array.isArray(selected) ? selected : [selected];
     setUploading(true);
-    setStatus("正在上传...");
-    for (const path of Array.isArray(selected) ? selected : [selected]) {
+    setUploadLog([]);
+
+    const log: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const name = files[i].split("/").pop()!;
+      log.push(`[${i + 1}/${files.length}] ${name} — 处理中...`);
+      setUploadLog([...log]);
       try {
-        await invoke("upload_document", { filePath: path, projectId: "default" });
-        setStatus(`已上传：${path.split("/").pop()}`);
+        await invoke("upload_document", { filePath: files[i], projectId: "default" });
+        log[i] = `[${i + 1}/${files.length}] ${name} — ✓ 完成（${i + 1}/${files.length}）`;
       } catch (e) {
-        setStatus(`上传失败：${e}`);
+        log[i] = `[${i + 1}/${files.length}] ${name} — ✗ 失败：${e}`;
       }
+      setUploadLog([...log]);
     }
+
     setUploading(false);
     await loadDocs();
   };
@@ -162,9 +171,12 @@ export default function DocumentPanel() {
         </button>
       </div>
 
-      {status && (
-        <div style={{ fontSize: "12px", color: "var(--color-muted)", marginBottom: "var(--space-sm)" }}>
-          {status}
+      {(uploadLog.length > 0 || status) && (
+        <div style={{ fontSize: "11px", color: "var(--color-muted)", marginBottom: "var(--space-sm)", maxHeight: "120px", overflowY: "auto", backgroundColor: "var(--color-canvas-soft)", borderRadius: "var(--radius-sm)", padding: "var(--space-xs) var(--space-sm)", fontFamily: "var(--font-code)", lineHeight: 1.8 }}>
+          {uploadLog.map((line, i) => (
+            <div key={i} style={{ color: line.includes("失败") ? "var(--color-error)" : line.includes("✓") ? "var(--color-success)" : "var(--color-muted)" }}>{line}</div>
+          ))}
+          {status && !uploadLog.length && <div>{status}</div>}
         </div>
       )}
 
