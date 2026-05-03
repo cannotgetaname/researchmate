@@ -80,6 +80,21 @@ impl Database {
             VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));
             ",
         )?;
+
+        // Safe migration: add new columns that may not exist in older DBs
+        let _ = conn.execute_batch(
+            "ALTER TABLE document ADD COLUMN full_text TEXT;
+             ALTER TABLE document ADD COLUMN methodology TEXT;
+             ALTER TABLE document ADD COLUMN dataset TEXT;
+             ALTER TABLE document ADD COLUMN claims TEXT;
+             ALTER TABLE document ADD COLUMN subdomain TEXT;
+             ALTER TABLE document ADD COLUMN keywords TEXT;",
+        );
+        Ok(())
+    }
+}
+            ",
+        )?;
         Ok(())
     }
 }
