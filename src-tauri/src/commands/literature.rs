@@ -212,6 +212,18 @@ pub async fn ask_knowledge(
 
     // Step 1: LLM parses question into search dimensions
     let sq = parse_search_intent(&question, &cfg).await?;
+
+    // Strategy routing
+    match sq.strategy.as_str() {
+        "count" => {
+            return answer_count(&db, &project_id, &sq, &cfg, &question, &app_handle).await;
+        }
+        "list" => {
+            return answer_list(&db, &project_id, &sq, &cfg, &question, &app_handle).await;
+        }
+        _ => {} // semantic / single / compare — use two-phase search
+    }
+
     let query_vec = if sq.semantic {
         Some(embedding::embed_text(&question, &cfg).await?)
     } else {
@@ -290,6 +302,10 @@ async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<Searc
     let json_str = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
 
     let parsed: serde_json::Value = serde_json::from_str(json_str).unwrap_or_default();
+
+    let strategy = parsed["strategy"].as_str().unwrap_or("semantic").to_string();
+    let max_docs = parsed["max_docs"].as_u64().unwrap_or(20) as usize;
+
     Ok(SearchQuery {
         question: question.to_string(),
         doc_id: None,
@@ -297,7 +313,9 @@ async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<Searc
         domain: parsed["domain"].as_str().map(String::from),
         methodology: parsed["methodology"].as_str().map(String::from),
         author: parsed["author"].as_str().map(String::from),
-        semantic: true,
+        semantic: strategy != "count" && strategy != "list",
+        strategy,
+        max_docs,
     })
 }
 
@@ -370,7 +388,7 @@ fn execute_search(
                     }
                 }
                 scored_docs.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-                scored_docs.truncate(20);
+                scored_docs.truncate(sq.max_docs);
                 scored_docs.into_iter().map(|(id, _)| id).collect()
             } else {
                 doc_ids
@@ -491,6 +509,96 @@ fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {
         ctx.push_str(&format!("{}\n\n", h.text));
     }
     ctx
+}
+
+/// Answer a "count" question by querying document metadata directly
+async fn answer_count(
+    db: &Database, project_id: &str, sq: &SearchQuery,
+    cfg: &AppConfig, question: &str, app_handle: &tauri::AppHandle,
+) -> Result<String, String> {
+    use crate::llm::LlmEngine;
+    use crate::commands::writing::StreamChunk;
+    use tauri::Emitter;
+
+    let count = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let (mut sql, params) = build_doc_filter_sql(project_id, sq);
+        sql = sql.replace("SELECT id FROM", "SELECT COUNT(*) FROM");
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        conn.query_row(&sql, param_refs.as_slice(), |row| row.get::<_, i64>(0))
+            .unwrap_or(0)
+    };
+
+    let ctx = format!("知识库中共有 {} 篇文献（符合条件：{}）", count, describe_query(sq));
+    let prompt = format!("用户的提问是：{}\n\n请基于以下事实直接回答：{}", question, ctx);
+
+    let model = cfg.model_for("literature");
+    let engine = LlmEngine::new(cfg, model);
+    let handle = app_handle.clone();
+    engine.chat_stream(&prompt, &[], "", move |delta| {
+        let _ = handle.emit("polish-stream", StreamChunk { delta });
+    }).await
+}
+
+/// Answer a "list" question by querying documents and listing them
+async fn answer_list(
+    db: &Database, project_id: &str, sq: &SearchQuery,
+    cfg: &AppConfig, question: &str, app_handle: &tauri::AppHandle,
+) -> Result<String, String> {
+    use crate::llm::LlmEngine;
+    use crate::commands::writing::StreamChunk;
+    use tauri::Emitter;
+
+    let listing = {
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let (mut sql, params) = build_doc_filter_sql(project_id, sq);
+        sql.push_str(" LIMIT 100");
+        let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+        let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+        let docs: Vec<Document> = stmt.query_map(param_refs.as_slice(), doc_from_row)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+        let mut list = String::from("文献列表：\n");
+        for (i, doc) in docs.iter().enumerate() {
+            let title = doc.title.as_deref().unwrap_or(&doc.filename);
+            let journal = doc.journal.as_deref().unwrap_or("");
+            let year = doc.year.map(|y| y.to_string()).unwrap_or_default();
+            list.push_str(&format!("{}. {} ({}, {})\n", i + 1, title, journal, year));
+        }
+        list
+    };
+
+    let prompt = format!("用户提问：{}\n\n{}", question, listing);
+    let model = cfg.model_for("literature");
+    let engine = LlmEngine::new(cfg, model);
+    let handle = app_handle.clone();
+    engine.chat_stream(&prompt, &[], "", move |delta| {
+        let _ = handle.emit("polish-stream", StreamChunk { delta });
+    }).await
+}
+
+/// Build WHERE clause for document filtering (reusable across count/list/search)
+fn build_doc_filter_sql(project_id: &str, sq: &SearchQuery) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
+    let mut sql = String::from("SELECT id FROM document WHERE project_id = ?1 AND status = 'ready'");
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
+
+    if let Some(ref j) = sq.journal {
+        let idx = params.len() + 1;
+        sql.push_str(&format!(" AND journal LIKE ?{}", idx));
+        params.push(Box::new(format!("%{}%", j)));
+    }
+    if let Some(ref dom) = sq.domain {
+        let idx = params.len() + 1;
+        sql.push_str(&format!(" AND (domain LIKE ?{} OR keywords LIKE ?{})", idx, idx));
+        params.push(Box::new(format!("%{}%", dom)));
+    }
+    if let Some(ref auth) = sq.author {
+        let idx = params.len() + 1;
+        sql.push_str(&format!(" AND authors LIKE ?{}", idx));
+        params.push(Box::new(format!("%{}%", auth)));
+    }
+    (sql, params)
 }
 
 fn describe_query(sq: &SearchQuery) -> String {

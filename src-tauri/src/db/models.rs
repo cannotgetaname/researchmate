@@ -70,6 +70,19 @@ pub struct SearchQuery {
     pub methodology: Option<String>,
     pub author: Option<String>,
     pub semantic: bool,
+    pub strategy: String,
+    pub max_docs: usize,
+}
+
+impl Default for SearchQuery {
+    fn default() -> Self {
+        Self {
+            question: String::new(),
+            doc_id: None, journal: None, domain: None,
+            methodology: None, author: None, semantic: true,
+            strategy: "semantic".to_string(), max_docs: 20,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
