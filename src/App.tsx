@@ -8,11 +8,11 @@ import StatusBar from "./components/StatusBar";
 export default function App() {
   const [content, setContent] = useState("");
   const [activeModule, setActiveModule] = useState("write");
-  const [, setSelectedText] = useState("");
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [fillText, setFillText] = useState("");
 
   const wordCount = useMemo(
     () => (content.match(/[一-鿿\w]+/g) || []).length,
@@ -23,8 +23,16 @@ export default function App() {
     setContent(value ?? "");
   }, []);
 
-  const handleSelectionChange = useCallback((text: string) => {
-    setSelectedText(text);
+  const handleSelectionChange = useCallback((_text: string) => {
+    // selection is tracked in EditorPanel internally for context menu
+  }, []);
+
+  const handleAddToChat = useCallback((text: string) => {
+    setFillText(text);
+  }, []);
+
+  const handleFillConsumed = useCallback(() => {
+    setFillText("");
   }, []);
 
   const handleSaveApiKey = async () => {
@@ -49,10 +57,13 @@ export default function App() {
           content={content}
           onChange={handleContentChange}
           onSelectionChange={handleSelectionChange}
+          onAddToChat={handleAddToChat}
         />
         <ChatPanel
           activeModule={activeModule}
           onModuleChange={setActiveModule}
+          fillText={fillText}
+          onFillConsumed={handleFillConsumed}
         />
       </div>
 

@@ -1,10 +1,12 @@
-import { useState, type KeyboardEvent } from "react";
+import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import ReactMarkdown from "react-markdown";
 import { useStreamChat } from "../hooks/useStreamChat";
 
 interface ChatPanelProps {
   activeModule: string;
   onModuleChange: (module: string) => void;
+  fillText: string;
+  onFillConsumed: () => void;
 }
 
 const MODULES = [
@@ -14,9 +16,21 @@ const MODULES = [
   { key: "plan", label: "管理" },
 ];
 
-export default function ChatPanel({ activeModule, onModuleChange }: ChatPanelProps) {
+export default function ChatPanel({
+  activeModule, onModuleChange, fillText, onFillConsumed,
+}: ChatPanelProps) {
   const [input, setInput] = useState("");
   const { messages, sendMessage, isLoading } = useStreamChat();
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // When editor sends text via right-click, auto-fill the input
+  useEffect(() => {
+    if (fillText) {
+      setInput(fillText);
+      onFillConsumed();
+      inputRef.current?.focus();
+    }
+  }, [fillText, onFillConsumed]);
 
   const handleSend = () => {
     const trimmed = input.trim();
@@ -55,7 +69,7 @@ export default function ChatPanel({ activeModule, onModuleChange }: ChatPanelPro
               fontSize: "14px",
             }}
           >
-            选中编辑器中的文字，或输入 @write 开始写作润色
+            选中编辑器文字，右键选择操作，或直接输入问题
           </div>
         )}
         {messages.map((msg) => (
@@ -83,6 +97,7 @@ export default function ChatPanel({ activeModule, onModuleChange }: ChatPanelPro
       </div>
       <div className="chat-input-area">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
