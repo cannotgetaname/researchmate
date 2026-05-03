@@ -6,7 +6,7 @@ use crate::db::Database;
 use crate::db::models::Document;
 use crate::config::AppConfig;
 use crate::knowledge::{pdf, embedding, chunker};
-use crate::db::models::{DocChunk, SearchQuery, SearchHit};
+use crate::db::models::{SearchQuery, SearchHit};
 
 #[derive(serde::Serialize)]
 pub struct SearchResult {
@@ -514,12 +514,8 @@ fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {
 /// Answer a "count" question by querying document metadata directly
 async fn answer_count(
     db: &Database, project_id: &str, sq: &SearchQuery,
-    cfg: &AppConfig, question: &str, app_handle: &tauri::AppHandle,
+    _cfg: &AppConfig, _question: &str, _app_handle: &tauri::AppHandle,
 ) -> Result<String, String> {
-    use crate::llm::LlmEngine;
-    use crate::commands::writing::StreamChunk;
-    use tauri::Emitter;
-
     let count = {
         let conn = db.conn.lock().map_err(|e| e.to_string())?;
         let (mut sql, params) = build_doc_filter_sql(project_id, sq);
@@ -530,26 +526,15 @@ async fn answer_count(
     };
 
     let ctx = format!("知识库中共有 {} 篇文献（符合条件：{}）", count, describe_query(sq));
-    let prompt = format!("用户的提问是：{}\n\n请基于以下事实直接回答：{}", question, ctx);
-
-    let model = cfg.model_for("literature");
-    let engine = LlmEngine::new(cfg, model);
-    let handle = app_handle.clone();
-    engine.chat_stream(&prompt, &[], "", move |delta| {
-        let _ = handle.emit("polish-stream", StreamChunk { delta });
-    }).await
+    Ok(ctx)
 }
 
 /// Answer a "list" question by querying documents and listing them
 async fn answer_list(
     db: &Database, project_id: &str, sq: &SearchQuery,
-    cfg: &AppConfig, question: &str, app_handle: &tauri::AppHandle,
+    _cfg: &AppConfig, _question: &str, _app_handle: &tauri::AppHandle,
 ) -> Result<String, String> {
-    use crate::llm::LlmEngine;
-    use crate::commands::writing::StreamChunk;
-    use tauri::Emitter;
-
-    let listing = {
+    let mut listing = {
         let conn = db.conn.lock().map_err(|e| e.to_string())?;
         let (mut sql, params) = build_doc_filter_sql(project_id, sq);
         sql.push_str(" LIMIT 100");
@@ -559,23 +544,21 @@ async fn answer_list(
             .map_err(|e| e.to_string())?
             .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
-        let mut list = String::from("文献列表：\n");
+        let mut listing = String::from("文献列表：\n");
         for (i, doc) in docs.iter().enumerate() {
             let title = doc.title.as_deref().unwrap_or(&doc.filename);
             let journal = doc.journal.as_deref().unwrap_or("");
             let year = doc.year.map(|y| y.to_string()).unwrap_or_default();
-            list.push_str(&format!("{}. {} ({}, {})\n", i + 1, title, journal, year));
+            listing.push_str(&format!("{}. {} ({}, {})\n", i + 1, title, journal, year));
         }
-        list
+        listing
     };
 
-    let prompt = format!("用户提问：{}\n\n{}", question, listing);
-    let model = cfg.model_for("literature");
-    let engine = LlmEngine::new(cfg, model);
-    let handle = app_handle.clone();
-    engine.chat_stream(&prompt, &[], "", move |delta| {
-        let _ = handle.emit("polish-stream", StreamChunk { delta });
-    }).await
+    // List queries don't need LLM — just return the list directly
+    if listing.lines().count() <= 1 {
+        listing.push_str("（无匹配文献）");
+    }
+    Ok(listing)
 }
 
 /// Build WHERE clause for document filtering (reusable across count/list/search)
