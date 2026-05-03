@@ -5,19 +5,44 @@ import EditorPanel from "./components/EditorPanel";
 import ChatPanel from "./components/ChatPanel";
 import StatusBar from "./components/StatusBar";
 
+interface AppConfig {
+  has_key: boolean;
+  deepseek_api_key_masked: string;
+  deepseek_base_url: string;
+  default_model: string;
+  model_overrides: Record<string, string>;
+  modules: string[];
+}
+
+const MODULE_LABELS: Record<string, string> = {
+  writing: "写作润色",
+  analysis: "数据分析",
+  literature: "文献处理",
+  project_mgmt: "项目管理",
+};
+
+const inputStyle: React.CSSProperties = {
+  width: "100%", height: "36px",
+  padding: "0 var(--space-base)",
+  border: "1px solid var(--color-hairline)",
+  borderRadius: "var(--radius-md)",
+  fontFamily: "var(--font-code)", fontSize: "13px",
+  outline: "none",
+};
+
 export default function App() {
   const [content, setContent] = useState("");
   const [activeModule, setActiveModule] = useState("write");
   const [showSettings, setShowSettings] = useState(false);
   const [showAbout, setShowAbout] = useState(false);
-  const [apiKey, setApiKey] = useState("");
-  const [saveMsg, setSaveMsg] = useState("");
   const [fillText, setFillText] = useState("");
-  const [configInfo, setConfigInfo] = useState<{
-    has_key: boolean;
-    deepseek_api_key_masked: string;
-    model_name: string;
-  } | null>(null);
+  const [saveMsg, setSaveMsg] = useState("");
+
+  // Settings form state
+  const [cfg, setCfg] = useState<AppConfig | null>(null);
+  const [apiKey, setApiKey] = useState("");
+  const [defaultModel, setDefaultModel] = useState("");
+  const [overrides, setOverrides] = useState<Record<string, string>>({});
 
   const wordCount = useMemo(
     () => (content.match(/[一-鿿\w]+/g) || []).length,
@@ -29,7 +54,7 @@ export default function App() {
   }, []);
 
   const handleSelectionChange = useCallback((_text: string) => {
-    // selection is tracked in EditorPanel internally for context menu
+    // selection tracked internally in EditorPanel for context menu
   }, []);
 
   const handleAddToChat = useCallback((text: string) => {
@@ -45,26 +70,33 @@ export default function App() {
     setSaveMsg("");
     setApiKey("");
     try {
-      const cfg = await invoke("get_config") as {
-        has_key: boolean;
-        deepseek_api_key_masked: string;
-        model_name: string;
-      };
-      setConfigInfo(cfg);
-    } catch (err) {
-      setConfigInfo(null);
+      const c = await invoke("get_config") as AppConfig;
+      setCfg(c);
+      setDefaultModel(c.default_model);
+      setOverrides(c.model_overrides);
+    } catch {
+      setCfg(null);
     }
   };
 
-  const handleSaveApiKey = async () => {
-    if (!apiKey.trim()) return;
+  const handleSaveConfig = async () => {
     try {
-      const msg = await invoke("save_api_key", { apiKey });
+      const modelOverrides = Object.fromEntries(
+        cfg!.modules.map((m) => [
+          m,
+          overrides[m] && overrides[m].trim() ? overrides[m].trim() : null,
+        ]),
+      );
+      const msg = await invoke("save_config", {
+        apiKey: apiKey.trim() || null,
+        defaultModel: defaultModel.trim() || null,
+        modelOverrides,
+      });
       setSaveMsg(msg as string);
       setApiKey("");
-      // Reload config to show updated state
-      const cfg = await invoke("get_config") as typeof configInfo;
-      setConfigInfo(cfg);
+      // Refresh display
+      const c = await invoke("get_config") as AppConfig;
+      setCfg(c);
     } catch (err) {
       setSaveMsg(`保存失败：${err}`);
     }
@@ -110,8 +142,9 @@ export default function App() {
               backgroundColor: "var(--color-surface-card)",
               borderRadius: "var(--radius-lg)",
               padding: "var(--space-xl)",
-              minWidth: "400px",
-              maxWidth: "480px",
+              width: "500px",
+              maxHeight: "80vh",
+              overflowY: "auto",
               border: "1px solid var(--color-hairline)",
             }}
             onClick={(e) => e.stopPropagation()}
@@ -120,47 +153,71 @@ export default function App() {
               设置
             </h3>
 
-            {/* Current config status */}
-            {configInfo && (
+            {/* Current status */}
+            {cfg && (
               <div style={{
                 marginBottom: "var(--space-base)",
                 padding: "var(--space-sm) var(--space-base)",
                 backgroundColor: "var(--color-canvas-soft)",
                 borderRadius: "var(--radius-sm)",
-                fontSize: "13px",
-                color: "var(--color-muted)",
+                fontSize: "13px", color: "var(--color-muted)",
               }}>
-                <div>模型：{configInfo.model_name}</div>
                 <div>
-                  API Key：{configInfo.has_key
-                    ? <span style={{ color: "var(--color-success)" }}>已配置 ({configInfo.deepseek_api_key_masked})</span>
+                  API Key：
+                  {cfg.has_key
+                    ? <span style={{ color: "var(--color-success)" }}>已配置 ({cfg.deepseek_api_key_masked})</span>
                     : <span style={{ color: "var(--color-error)" }}>未配置</span>
                   }
                 </div>
+                <div>默认模型：{cfg.default_model}</div>
               </div>
             )}
 
-            <label style={{ fontSize: "13px", color: "var(--color-muted)" }}>
-              修改 DeepSeek API Key
-            </label>
+            {/* API Key */}
+            <SectionLabel>修改 API Key</SectionLabel>
             <input
-              type="password"
-              value={apiKey}
+              type="password" value={apiKey} placeholder="输入新的 API Key..."
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder="输入新的 API Key..."
-              style={{
-                width: "100%", height: "40px", marginTop: "var(--space-xs)",
-                padding: "0 var(--space-base)",
-                border: "1px solid var(--color-hairline)",
-                borderRadius: "var(--radius-md)",
-                fontFamily: "var(--font-code)", fontSize: "13px",
-                outline: "none",
-              }}
+              style={inputStyle}
             />
+
+            {/* Default model */}
+            <div style={{ marginTop: "var(--space-lg)" }}>
+              <SectionLabel>默认模型</SectionLabel>
+              <input
+                type="text" value={defaultModel}
+                onChange={(e) => setDefaultModel(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+
+            {/* Per-module overrides */}
+            <div style={{ marginTop: "var(--space-lg)" }}>
+              <SectionLabel>各模块模型（留空则使用默认）</SectionLabel>
+              {cfg?.modules.map((mod) => (
+                <div key={mod} style={{ marginTop: "var(--space-sm)" }}>
+                  <div style={{
+                    fontSize: "12px", color: "var(--color-muted)",
+                    marginBottom: "var(--space-xxs)",
+                  }}>
+                    {MODULE_LABELS[mod] ?? mod}
+                  </div>
+                  <input
+                    type="text"
+                    value={overrides[mod] ?? ""}
+                    placeholder={cfg.default_model}
+                    onChange={(e) => setOverrides((prev) => ({
+                      ...prev, [mod]: e.target.value,
+                    }))}
+                    style={inputStyle}
+                  />
+                </div>
+              ))}
+            </div>
 
             {saveMsg && (
               <div style={{
-                marginTop: "var(--space-sm)", fontSize: "13px",
+                marginTop: "var(--space-base)", fontSize: "13px",
                 color: saveMsg.includes("失败") ? "var(--color-error)" : "var(--color-success)",
               }}>
                 {saveMsg}
@@ -171,10 +228,7 @@ export default function App() {
               display: "flex", gap: "var(--space-sm)",
               marginTop: "var(--space-base)", justifyContent: "flex-end",
             }}>
-              <button
-                className="topnav-btn"
-                onClick={() => { setShowSettings(false); setSaveMsg(""); }}
-              >
+              <button className="topnav-btn" onClick={() => setShowSettings(false)}>
                 关闭
               </button>
               <button
@@ -186,9 +240,9 @@ export default function App() {
                   fontFamily: "var(--font-ui)", fontSize: "14px",
                   fontWeight: 500, cursor: "pointer",
                 }}
-                onClick={handleSaveApiKey}
+                onClick={handleSaveConfig}
               >
-                保存
+                保存全部
               </button>
             </div>
           </div>
@@ -234,6 +288,14 @@ export default function App() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{ fontSize: "12px", color: "var(--color-muted)", marginBottom: "var(--space-xs)" }}>
+      {children}
     </div>
   );
 }

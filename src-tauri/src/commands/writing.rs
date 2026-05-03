@@ -32,7 +32,8 @@ pub async fn polish_text(
 
     let (engine, key_empty) = {
         let cfg = config.read().unwrap();
-        let engine = LlmEngine::new(&cfg);
+        let model = cfg.model_for("writing").to_string();
+        let engine = LlmEngine::new(&cfg, &model);
         let key_empty = cfg.deepseek_api_key.is_empty();
         (engine, key_empty)
     };
@@ -85,6 +86,8 @@ pub async fn create_session(
 pub async fn get_config(
     config: State<'_, Arc<RwLock<AppConfig>>>,
 ) -> Result<serde_json::Value, String> {
+    use crate::config::MODULES;
+
     let cfg = config.read().unwrap();
     let masked_key = if cfg.deepseek_api_key.len() > 8 {
         format!("{}...{}",
@@ -97,29 +100,52 @@ pub async fn get_config(
         "****".to_string()
     };
 
+    let overrides: serde_json::Value = MODULES
+        .iter()
+        .map(|m| {
+            (*m, cfg.model_for(m))
+        })
+        .collect();
+
     Ok(serde_json::json!({
         "has_key": !cfg.deepseek_api_key.is_empty(),
         "deepseek_api_key_masked": masked_key,
         "deepseek_base_url": cfg.deepseek_base_url,
-        "model_name": cfg.model_name,
+        "default_model": cfg.default_model,
+        "model_overrides": overrides,
+        "modules": MODULES,
     }))
 }
 
-/// Save API key to config file AND update in-memory state immediately
+/// Save full config (API key + model overrides)
 #[command]
-pub async fn save_api_key(
-    api_key: String,
+pub async fn save_config(
+    api_key: Option<String>,
+    default_model: Option<String>,
+    model_overrides: Option<std::collections::HashMap<String, Option<String>>>,
     config: State<'_, Arc<RwLock<AppConfig>>>,
     app_dir: State<'_, PathBuf>,
 ) -> Result<String, String> {
-    // Update in-memory config immediately
-    {
-        let mut cfg = config.write().unwrap();
-        cfg.deepseek_api_key = api_key;
-        cfg.save(&app_dir);
+    let mut cfg = config.write().unwrap();
+
+    if let Some(key) = api_key {
+        cfg.deepseek_api_key = key;
+    }
+    if let Some(model) = default_model {
+        cfg.default_model = model;
+    }
+    if let Some(overrides) = model_overrides {
+        for (module, model_opt) in overrides {
+            match model_opt {
+                Some(model) => { cfg.model_overrides.insert(module, model); }
+                None => { cfg.model_overrides.remove(&module); }
+            }
+        }
     }
 
-    Ok("API Key 已保存，立即生效。".to_string())
+    cfg.save(&app_dir);
+
+    Ok("配置已保存，立即生效。".to_string())
 }
 
 /// Get all messages for a session

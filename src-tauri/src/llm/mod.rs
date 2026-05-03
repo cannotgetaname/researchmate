@@ -17,14 +17,14 @@ pub struct LlmEngine {
 }
 
 impl LlmEngine {
-    pub fn new(config: &AppConfig) -> Self {
+    pub fn new(config: &AppConfig, model: &str) -> Self {
         let openai_config = async_openai::config::OpenAIConfig::new()
             .with_api_base(&config.deepseek_base_url)
             .with_api_key(&config.deepseek_api_key);
 
         Self {
             client: Client::with_config(openai_config),
-            model: config.model_name.clone(),
+            model: model.to_string(),
         }
     }
 
