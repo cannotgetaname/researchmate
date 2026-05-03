@@ -39,11 +39,11 @@ pub async fn upload_document(
     let dest = data_dir.join(&filename);
     std::fs::copy(src, &dest).map_err(|e| format!("文件复制失败：{}", e))?;
 
-    // Extract text from PDF
-    let text = pdf::extract_pdf_text(&dest)?;
-
     // Clone config to avoid RwLock guard across await
     let cfg = { config.read().unwrap().clone() };
+
+    // Extract text from PDF (via configured parser)
+    let text = pdf::extract_pdf_text(&dest, &cfg)?;
 
     // Auto-extract metadata with LLM
     let (title, authors, year, journal, domain, keywords, abstract_text) =

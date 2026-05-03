@@ -5,14 +5,28 @@ use std::path::PathBuf;
 
 pub const MODULES: &[&str] = &["writing", "analysis", "literature", "project_mgmt"];
 
+/// Supported embedding providers
+pub const EMBEDDING_PROVIDERS: &[&str] = &["ollama", "openai"];
+
+/// Supported PDF parsers
+pub const PDF_PARSERS: &[&str] = &["native", "opendataloader"];
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {
+    // ── LLM ──
     pub deepseek_api_key: String,
     pub deepseek_base_url: String,
     pub default_model: String,
     pub model_overrides: HashMap<String, String>,
-    pub embedding_model: String,
-    pub embedding_base_url: String,
+
+    // ── Embedding ──
+    pub embedding_provider: String,   // "ollama" | "openai"
+    pub embedding_model: String,      // "embeddinggemma:latest" | "text-embedding-3-small"
+    pub embedding_base_url: String,   // "http://localhost:11434" | "https://api.deepseek.com"
+
+    // ── PDF Parser ──
+    pub pdf_parser: String,           // "native" | "opendataloader"
+    pub python_path: String,          // path to python3 binary
 }
 
 impl Default for AppConfig {
@@ -22,8 +36,13 @@ impl Default for AppConfig {
             deepseek_base_url: "https://api.deepseek.com".to_string(),
             default_model: "deepseek-v4-pro".to_string(),
             model_overrides: HashMap::new(),
+
+            embedding_provider: "ollama".to_string(),
             embedding_model: "embeddinggemma:latest".to_string(),
             embedding_base_url: "http://localhost:11434".to_string(),
+
+            pdf_parser: "native".to_string(),
+            python_path: "python3".to_string(),
         }
     }
 }
@@ -48,7 +67,6 @@ impl AppConfig {
         fs::write(config_path, content).ok();
     }
 
-    /// Get the model name for a module, falling back to default
     pub fn model_for(&self, module: &str) -> &str {
         self.model_overrides
             .get(module)

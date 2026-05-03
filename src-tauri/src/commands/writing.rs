@@ -114,19 +114,27 @@ pub async fn get_config(
         "default_model": cfg.default_model,
         "model_overrides": overrides,
         "modules": MODULES,
+        "embedding_provider": cfg.embedding_provider,
         "embedding_model": cfg.embedding_model,
         "embedding_base_url": cfg.embedding_base_url,
+        "pdf_parser": cfg.pdf_parser,
+        "python_path": cfg.python_path,
+        "pdf_parsers": crate::config::PDF_PARSERS,
+        "embedding_providers": crate::config::EMBEDDING_PROVIDERS,
     }))
 }
 
-/// Save full config (API key + model overrides + embedding)
+/// Save full config
 #[command]
 pub async fn save_config(
     api_key: Option<String>,
     default_model: Option<String>,
     model_overrides: Option<std::collections::HashMap<String, Option<String>>>,
+    embedding_provider: Option<String>,
     embedding_model: Option<String>,
     embedding_base_url: Option<String>,
+    pdf_parser: Option<String>,
+    python_path: Option<String>,
     config: State<'_, Arc<RwLock<AppConfig>>>,
     app_dir: State<'_, PathBuf>,
 ) -> Result<String, String> {
@@ -146,11 +154,20 @@ pub async fn save_config(
             }
         }
     }
-    if let Some(model) = embedding_model {
-        cfg.embedding_model = model;
+    if let Some(v) = embedding_provider {
+        cfg.embedding_provider = v;
     }
-    if let Some(url) = embedding_base_url {
-        cfg.embedding_base_url = url;
+    if let Some(v) = embedding_model {
+        cfg.embedding_model = v;
+    }
+    if let Some(v) = embedding_base_url {
+        cfg.embedding_base_url = v;
+    }
+    if let Some(v) = pdf_parser {
+        cfg.pdf_parser = v;
+    }
+    if let Some(v) = python_path {
+        cfg.python_path = v;
     }
 
     cfg.save(&app_dir);
