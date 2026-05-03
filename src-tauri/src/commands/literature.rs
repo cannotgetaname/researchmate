@@ -107,10 +107,17 @@ pub async fn upload_document(
         ],
     ).map_err(|e| e.to_string())?;
 
-    // Link document to project
+    // Link document to knowledge base (and auto-link to all projects using this KB)
+    let kb_id = get_or_create_default_kb(&conn);
     conn.execute(
-        "INSERT OR IGNORE INTO project_document (project_id, document_id) VALUES (?1, ?2)",
-        rusqlite::params![project_id, doc_id],
+        "INSERT OR IGNORE INTO kb_document (kb_id, document_id) VALUES (?1, ?2)",
+        rusqlite::params![kb_id, doc_id],
+    ).map_err(|e| e.to_string())?;
+
+    // Also ensure default project links to this KB
+    conn.execute(
+        "INSERT OR IGNORE INTO project_kb (project_id, kb_id) VALUES ('default', ?1)",
+        rusqlite::params![kb_id],
     ).map_err(|e| e.to_string())?;
 
     // Store doc-level vector
@@ -149,7 +156,7 @@ pub async fn search_knowledge(
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let mut docs_stmt = conn.prepare(
-        format!("SELECT {} FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 AND d.status = 'ready'", DOC_COLS).as_str()
+        format!("SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'", DOC_COLS).as_str()
     ).map_err(|e| e.to_string())?;
 
     let docs: Vec<Document> = docs_stmt.query_map(rusqlite::params![project_id], doc_from_row)
@@ -190,7 +197,7 @@ pub async fn get_documents(
 ) -> Result<Vec<Document>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        format!("SELECT {} FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 ORDER BY d.created_at DESC", DOC_COLS).as_str()
+        format!("SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 ORDER BY d.created_at DESC", DOC_COLS).as_str()
     ).map_err(|e| e.to_string())?;
 
     let docs = stmt.query_map(rusqlite::params![project_id], doc_from_row)
@@ -335,7 +342,7 @@ fn execute_search(
     // ── Phase 1: Find candidate document IDs ──
     let candidate_doc_ids = {
         let mut doc_sql = String::from(
-            "SELECT d.id FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 AND d.status = 'ready'"
+            "SELECT d.id FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'"
         );
         let mut doc_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
 
@@ -416,7 +423,7 @@ fn execute_search(
     let mut chunk_sql = format!(
         "SELECT c.id, c.document_id, d.title, d.authors, d.journal, d.domain, d.methodology, c.heading, c.role, c.text, c.vector
          FROM doc_chunk c JOIN document d ON c.document_id = d.id
-         JOIN project_document pd ON d.id = pd.document_id
+         JOIN kb_document kd ON d.id = kd.document_id JOIN project_kb pk ON kd.kb_id = pk.kb_id
          WHERE pd.project_id = ?1 AND c.document_id IN ({})",
         ph_str
     );
@@ -619,9 +626,16 @@ async fn answer_list(
 }
 
 /// Build WHERE clause for document filtering (reusable across count/list/search)
+fn get_or_create_default_kb(conn: &rusqlite::Connection) -> String {
+    let kb_id: Result<String, _> = conn.query_row(
+        "SELECT id FROM knowledge_base LIMIT 1", [], |row| row.get(0),
+    );
+    kb_id.unwrap_or_else(|_| "default".to_string())
+}
+
 fn build_doc_filter_sql(project_id: &str, sq: &SearchQuery) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
     let mut sql = format!(
-        "SELECT {} FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 AND d.status = 'ready'",
+        "SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'",
         DOC_COLS
     );
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
@@ -684,6 +698,73 @@ pub async fn remove_doc_from_project(
         rusqlite::params![project_id, doc_id],
     ).map_err(|e| e.to_string())?;
     Ok("已移除".to_string())
+}
+
+/// List all knowledge bases
+#[command]
+pub async fn list_knowledge_bases(
+    db: State<'_, Arc<Database>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, description, created_at, (SELECT COUNT(*) FROM kb_document WHERE kb_id = k.id) as doc_count FROM knowledge_base k ORDER BY created_at"
+    ).map_err(|e| e.to_string())?;
+    let kbs = stmt.query_map([], |row| {
+        Ok(serde_json::json!({
+            "id": row.get::<_, String>(0)?,
+            "name": row.get::<_, String>(1)?,
+            "description": row.get::<_, Option<String>>(2)?,
+            "created_at": row.get::<_, String>(3)?,
+            "doc_count": row.get::<_, i64>(4)?,
+        }))
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(kbs)
+}
+
+/// Create a knowledge base
+#[command]
+pub async fn create_knowledge_base(
+    name: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    conn.execute(
+        "INSERT INTO knowledge_base (id, name, description, created_at) VALUES (?1,?2,?3,?4)",
+        rusqlite::params![id, name, None::<String>, chrono::Utc::now().to_rfc3339()],
+    ).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
+/// Link a knowledge base to a project
+#[command]
+pub async fn link_kb_to_project(
+    project_id: String,
+    kb_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR IGNORE INTO project_kb (project_id, kb_id) VALUES (?1, ?2)",
+        rusqlite::params![project_id, kb_id],
+    ).map_err(|e| e.to_string())?;
+    Ok("已关联".to_string())
+}
+
+/// Unlink a knowledge base from a project
+#[command]
+pub async fn unlink_kb_from_project(
+    project_id: String,
+    kb_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM project_kb WHERE project_id = ?1 AND kb_id = ?2",
+        rusqlite::params![project_id, kb_id],
+    ).map_err(|e| e.to_string())?;
+    Ok("已取消关联".to_string())
 }
 
 /// Get all documents in the global pool (not tied to a project)

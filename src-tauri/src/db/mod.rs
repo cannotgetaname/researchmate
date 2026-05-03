@@ -86,11 +86,33 @@ impl Database {
                 vector      TEXT NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS project_document (
-                project_id  TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
-                document_id TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
-                PRIMARY KEY (project_id, document_id)
+            CREATE TABLE IF NOT EXISTS knowledge_base (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                description TEXT,
+                created_at  TEXT NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS kb_document (
+                kb_id       TEXT NOT NULL REFERENCES knowledge_base(id) ON DELETE CASCADE,
+                document_id TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+                PRIMARY KEY (kb_id, document_id)
+            );
+
+            CREATE TABLE IF NOT EXISTS project_kb (
+                project_id  TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+                kb_id       TEXT NOT NULL REFERENCES knowledge_base(id) ON DELETE CASCADE,
+                PRIMARY KEY (project_id, kb_id)
+            );
+
+            INSERT OR IGNORE INTO knowledge_base (id, name, description, created_at)
+            VALUES ('default', '默认知识库', '默认文献库', datetime('now'));
+
+            INSERT OR IGNORE INTO kb_document (kb_id, document_id)
+            SELECT 'default', id FROM document;
+
+            INSERT OR IGNORE INTO project_kb (project_id, kb_id)
+            SELECT p.id, 'default' FROM project p;
 
             INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
             VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));
