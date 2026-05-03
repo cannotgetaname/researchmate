@@ -18,7 +18,7 @@ impl Default for AppConfig {
         Self {
             deepseek_api_key: String::new(),
             deepseek_base_url: "https://api.deepseek.com".to_string(),
-            default_model: "deepseek-chat".to_string(),
+            default_model: "deepseek-v4-pro".to_string(),
             model_overrides: HashMap::new(),
         }
     }
