@@ -1,0 +1,58 @@
+pub mod models;
+
+use rusqlite::{Connection, Result as SqlResult};
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+pub struct Database {
+    pub conn: Mutex<Connection>,
+}
+
+impl Database {
+    pub fn new(app_dir: &PathBuf) -> SqlResult<Self> {
+        std::fs::create_dir_all(app_dir).expect("failed to create app dir");
+        let db_path = app_dir.join("data.db");
+        let conn = Connection::open(db_path)?;
+        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        let db = Self { conn: Mutex::new(conn) };
+        db.run_migrations()?;
+        Ok(db)
+    }
+
+    fn run_migrations(&self) -> SqlResult<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS project (
+                id          TEXT PRIMARY KEY,
+                name        TEXT NOT NULL,
+                description TEXT,
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS session (
+                id          TEXT PRIMARY KEY,
+                project_id  TEXT NOT NULL REFERENCES project(id),
+                module      TEXT NOT NULL,
+                title       TEXT,
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS message (
+                id          TEXT PRIMARY KEY,
+                session_id  TEXT NOT NULL REFERENCES session(id),
+                role        TEXT NOT NULL,
+                content     TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS settings (
+                key   TEXT PRIMARY KEY,
+                value TEXT NOT NULL
+            );
+            ",
+        )?;
+        Ok(())
+    }
+}
