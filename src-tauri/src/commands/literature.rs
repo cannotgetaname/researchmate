@@ -78,20 +78,21 @@ pub async fn upload_document(
         methodology: None,
         dataset_: None,
         claims: None,
+        full_text: Some(text),
         chunk_count: 0,
         status: "ready".to_string(),
         created_at: chrono::Utc::now().to_rfc3339(),
     };
 
     conn.execute(
-        "INSERT INTO document (id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, chunk_count, status, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
+        "INSERT INTO document (id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
         rusqlite::params![
             doc.id, doc.project_id, doc.filename, doc.file_path,
             doc.title, doc.authors, doc.year, doc.journal, doc.doi,
             doc.abstract_, doc.domain, doc.subdomain, doc.keywords,
-            doc.methodology, doc.dataset_, doc.claims, doc.chunk_count,
-            doc.status, doc.created_at,
+            doc.methodology, doc.dataset_, doc.claims, doc.full_text,
+            doc.chunk_count, doc.status, doc.created_at,
         ],
     ).map_err(|e| e.to_string())?;
 
@@ -125,30 +126,9 @@ pub async fn search_knowledge(
         "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, chunk_count, status, created_at FROM document WHERE project_id = ?1 AND status = 'ready'"
     ).map_err(|e| e.to_string())?;
 
-    let docs: Vec<Document> = docs_stmt.query_map(rusqlite::params![project_id], |row| {
-        Ok(Document {
-            id: row.get(0)?,
-            project_id: row.get(1)?,
-            filename: row.get(2)?,
-            file_path: row.get(3)?,
-            title: row.get(4)?,
-            authors: row.get(5)?,
-            year: row.get(6)?,
-            journal: row.get(7)?,
-            doi: row.get(8)?,
-            abstract_: row.get(9)?,
-            domain: row.get(10)?,
-            subdomain: row.get(11)?,
-            keywords: row.get(12)?,
-            methodology: row.get(13)?,
-            dataset_: row.get(14)?,
-            claims: row.get(15)?,
-            chunk_count: row.get(16)?,
-            status: row.get(17)?,
-            created_at: row.get(18)?,
-        })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    let docs: Vec<Document> = docs_stmt.query_map(rusqlite::params![project_id], doc_from_row)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
     drop(docs_stmt);
 
@@ -187,32 +167,99 @@ pub async fn get_documents(
         "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, chunk_count, status, created_at FROM document WHERE project_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
 
-    let docs = stmt.query_map(rusqlite::params![project_id], |row| {
-        Ok(Document {
-            id: row.get(0)?,
-            project_id: row.get(1)?,
-            filename: row.get(2)?,
-            file_path: row.get(3)?,
-            title: row.get(4)?,
-            authors: row.get(5)?,
-            year: row.get(6)?,
-            journal: row.get(7)?,
-            doi: row.get(8)?,
-            abstract_: row.get(9)?,
-            domain: row.get(10)?,
-            subdomain: row.get(11)?,
-            keywords: row.get(12)?,
-            methodology: row.get(13)?,
-            dataset_: row.get(14)?,
-            claims: row.get(15)?,
-            chunk_count: row.get(16)?,
-            status: row.get(17)?,
-            created_at: row.get(18)?,
-        })
-    }).map_err(|e| e.to_string())?
-    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    let docs = stmt.query_map(rusqlite::params![project_id], doc_from_row)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
     Ok(docs)
+}
+
+/// RAG: ask a question, get an answer based on your documents
+#[command]
+pub async fn ask_knowledge(
+    question: String,
+    project_id: String,
+    db: State<'_, Arc<Database>>,
+    config: State<'_, Arc<RwLock<AppConfig>>>,
+    app_handle: tauri::AppHandle,
+) -> Result<String, String> {
+    use crate::llm::LlmEngine;
+    use crate::commands::writing::StreamChunk;
+    use tauri::Emitter;
+
+    let cfg = { config.read().unwrap().clone() };
+
+    // Search for relevant documents (scope DB access to drop locks before await)
+    let scored = {
+        let query_vec = embedding::embed_text(&question, &cfg).await?;
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+        let mut stmt = conn.prepare(
+            "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at FROM document WHERE project_id = ?1 AND status = 'ready'"
+        ).map_err(|e| e.to_string())?;
+
+        let docs: Vec<Document> = stmt.query_map(rusqlite::params![project_id], doc_from_row)
+            .map_err(|e| e.to_string())?
+            .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        drop(stmt);
+
+        let mut scored: Vec<(Document, f32)> = Vec::new();
+        for doc in docs {
+            let vector_json: String = conn.query_row(
+                "SELECT vector FROM doc_vector WHERE doc_id = ?1",
+                rusqlite::params![doc.id], |row| row.get(0),
+            ).unwrap_or_default();
+            let vector: Vec<f32> = serde_json::from_str(&vector_json).unwrap_or_default();
+            if vector.is_empty() { continue; }
+            let score = cosine_similarity(&query_vec, &vector);
+            scored.push((doc, score));
+        }
+
+        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        scored.truncate(3);
+        scored
+    }; // conn guard dropped here
+
+    if scored.is_empty() {
+        return Ok("知识库中没有找到相关文献，请先上传 PDF。".to_string());
+    }
+
+    // Build context from top documents
+    let mut context = String::from("以下是你知识库中与问题最相关的文献内容：\n\n");
+    for (i, (doc, score)) in scored.iter().enumerate() {
+        let title = doc.title.as_deref().unwrap_or(&doc.filename);
+        let snippet = doc.full_text.as_deref()
+            .unwrap_or(doc.abstract_.as_deref().unwrap_or(""))
+            .chars().take(3000).collect::<String>();
+        context.push_str(&format!(
+            "--- 文献{} (相似度: {:.0}%) ---\n标题: {}\n内容:\n{}\n\n",
+            i + 1, score * 100.0, title, snippet
+        ));
+    }
+
+    let system_prompt = format!(
+        r#"你是学术研究助手，根据用户知识库中的文献回答问题。
+
+规则：
+1. 只基于提供的文献内容回答，不要编造
+2. 引用具体文献时标注：**【文献标题】**
+3. 如果文献不足以回答，如实说明"知识库中暂无相关信息"
+4. 回答尽量结构化（分点、对比等）
+
+{}
+问题：{}"#,
+        context, question
+    );
+
+    let model = cfg.model_for("literature");
+    let engine = LlmEngine::new(&cfg, model);
+
+    let handle = app_handle.clone();
+    let result = engine.chat_stream(&system_prompt, &[], "", move |delta| {
+        let _ = handle.emit("polish-stream", StreamChunk { delta });
+    }).await?;
+
+    Ok(result)
 }
 
 /// Delete a document and its vector
@@ -227,6 +274,18 @@ pub async fn delete_document(
     conn.execute("DELETE FROM document WHERE id = ?1", rusqlite::params![doc_id])
         .map_err(|e| e.to_string())?;
     Ok("已删除".to_string())
+}
+
+fn doc_from_row(row: &rusqlite::Row) -> rusqlite::Result<Document> {
+    Ok(Document {
+        id: row.get(0)?, project_id: row.get(1)?, filename: row.get(2)?,
+        file_path: row.get(3)?, title: row.get(4)?, authors: row.get(5)?,
+        year: row.get(6)?, journal: row.get(7)?, doi: row.get(8)?,
+        abstract_: row.get(9)?, domain: row.get(10)?, subdomain: row.get(11)?,
+        keywords: row.get(12)?, methodology: row.get(13)?, dataset_: row.get(14)?,
+        claims: row.get(15)?, full_text: row.get(16)?, chunk_count: row.get(17)?,
+        status: row.get(18)?, created_at: row.get(19)?,
+    })
 }
 
 fn cosine_similarity(a: &[f32], b: &[f32]) -> f32 {

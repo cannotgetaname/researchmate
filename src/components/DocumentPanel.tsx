@@ -1,6 +1,9 @@
 import { useState, useEffect, useRef, type KeyboardEvent } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 interface DocInfo {
   id: string;
@@ -27,6 +30,9 @@ export default function DocumentPanel() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [searching, setSearching] = useState(false);
+  const [question, setQuestion] = useState("");
+  const [answer, setAnswer] = useState("");
+  const [asking, setAsking] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const loadDocs = async () => {
@@ -89,6 +95,27 @@ export default function DocumentPanel() {
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") handleSearch();
+  };
+
+  const handleAsk = async () => {
+    const q = question.trim();
+    if (!q || asking || docs.length === 0) return;
+    setAsking(true);
+    setAnswer("");
+
+    const unlisten = await listen<{ delta: string }>("polish-stream", (event) => {
+      setAnswer((prev) => prev + event.payload.delta);
+    });
+
+    try {
+      await invoke("ask_knowledge", { question: q, projectId: "default" });
+    } catch (e) {
+      setAnswer((prev) => prev + `\n\n> 错误：${e}`);
+    }
+
+    setAsking(false);
+    unlisten();
+    setQuestion("");
   };
 
   return (
@@ -235,6 +262,52 @@ export default function DocumentPanel() {
           ))
         )}
       </div>
+
+      {/* Q&A Section */}
+      {docs.length > 0 && (
+        <div style={{ borderTop: "1px solid var(--color-hairline)", paddingTop: "var(--space-sm)", marginTop: "var(--space-xs)" }}>
+          {/* Answer display */}
+          {answer && (
+            <div style={{
+              marginBottom: "var(--space-sm)", padding: "var(--space-sm) var(--space-base)",
+              backgroundColor: "var(--color-surface-card)", borderRadius: "var(--radius-md)",
+              border: "1px solid var(--color-hairline)", maxHeight: "200px", overflowY: "auto",
+            }}>
+              <div className="markdown-body" style={{ fontSize: "13px" }}>
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>{answer}</ReactMarkdown>
+              </div>
+            </div>
+          )}
+
+          {/* Question input */}
+          <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+            <input
+              type="text" value={question}
+              onChange={(e) => setQuestion(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleAsk(); } }}
+              placeholder="向知识库提问，如：这篇论文用的什么方法？"
+              disabled={asking}
+              style={{
+                flex: 1, height: "36px", padding: "0 var(--space-sm)",
+                border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-md)",
+                fontFamily: "var(--font-ui)", fontSize: "13px", outline: "none",
+              }}
+            />
+            <button
+              onClick={handleAsk} disabled={asking || !question.trim()}
+              style={{
+                height: "36px", padding: "0 var(--space-base)",
+                border: "none", borderRadius: "var(--radius-md)",
+                backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)",
+                fontFamily: "var(--font-ui)", fontSize: "13px", fontWeight: 500,
+                cursor: asking ? "not-allowed" : "pointer", opacity: asking ? 0.6 : 1,
+              }}
+            >
+              {asking ? "..." : "提问"}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

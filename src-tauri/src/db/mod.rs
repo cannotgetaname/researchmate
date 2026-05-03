@@ -69,10 +69,14 @@ impl Database {
                 methodology TEXT,
                 dataset     TEXT,
                 claims      TEXT,
+                full_text   TEXT,
                 chunk_count INTEGER DEFAULT 0,
                 status      TEXT DEFAULT 'pending',
                 created_at  TEXT NOT NULL
             );
+
+            -- Add full_text to existing DBs that predate this migration
+            ALTER TABLE document ADD COLUMN full_text TEXT;
 
             INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
             VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));

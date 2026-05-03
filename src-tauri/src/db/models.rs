@@ -45,6 +45,7 @@ pub struct Document {
     pub methodology: Option<String>,
     pub dataset_: Option<String>,
     pub claims: Option<String>,
+    pub full_text: Option<String>,
     pub chunk_count: i32,
     pub status: String,
     pub created_at: String,

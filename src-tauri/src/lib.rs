@@ -32,6 +32,7 @@ pub fn run() {
             commands::literature::search_knowledge,
             commands::literature::get_documents,
             commands::literature::delete_document,
+            commands::literature::ask_knowledge,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
