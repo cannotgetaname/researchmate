@@ -164,7 +164,7 @@ pub async fn get_documents(
 ) -> Result<Vec<Document>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, chunk_count, status, created_at FROM document WHERE project_id = ?1 ORDER BY created_at DESC"
+        "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at FROM document WHERE project_id = ?1 ORDER BY created_at DESC"
     ).map_err(|e| e.to_string())?;
 
     let docs = stmt.query_map(rusqlite::params![project_id], doc_from_row)
