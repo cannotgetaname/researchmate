@@ -50,14 +50,18 @@ pub async fn upload_document(
     let (title, authors, year, journal, domain, keywords, abstract_text) =
         extract_metadata_with_llm(&text, &cfg).await.unwrap_or_default();
 
-    // Chunk the full text (800 chars per chunk, 100 overlap)
-    let chunks = chunker::chunk_text(&text, 800, 100);
+    // Chunk the full text (800 chars per chunk, 100 overlap, max 40 chunks)
+    let mut chunks = chunker::chunk_text(&text, 800, 100);
+    if chunks.len() > 40 {
+        chunks.truncate(40);
+    }
     let chunk_count = chunks.len() as i32;
 
     // Generate embeddings for each chunk
     let mut chunk_vectors: Vec<String> = Vec::new();
-    for chunk in &chunks {
-        let v = embedding::embed_text(chunk, &cfg).await?;
+    for (i, chunk) in chunks.iter().enumerate() {
+        let v = embedding::embed_text(chunk, &cfg).await
+            .map_err(|e| format!("嵌入第{}块失败: {}", i + 1, e))?;
         chunk_vectors.push(serde_json::to_string(&v).map_err(|e| e.to_string())?);
     }
 

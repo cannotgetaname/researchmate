@@ -39,7 +39,7 @@ except Exception as e:
         .arg("-c")
         .arg(&script)
         .output()
-        .map_err(|e| format!("Python 调用失败 ({}): {}", config.python_path, e))?;
+        .map_err(|e| format!("Python 调用失败 ({}): {}\n提示：确认 {} 已安装，Java 11+ 可用", config.python_path, e, config.python_path))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
