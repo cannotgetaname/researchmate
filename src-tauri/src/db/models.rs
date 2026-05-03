@@ -30,7 +30,6 @@ pub struct Message {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Document {
     pub id: String,
-    pub project_id: String,
     pub filename: String,
     pub file_path: String,
     pub title: Option<String>,

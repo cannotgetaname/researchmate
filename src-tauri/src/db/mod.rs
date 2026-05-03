@@ -86,6 +86,12 @@ impl Database {
                 vector      TEXT NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS project_document (
+                project_id  TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+                document_id TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+                PRIMARY KEY (project_id, document_id)
+            );
+
             INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
             VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));
             ",

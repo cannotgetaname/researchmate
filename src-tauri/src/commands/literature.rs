@@ -75,7 +75,6 @@ pub async fn upload_document(
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let doc = Document {
         id: doc_id.clone(),
-        project_id,
         filename,
         file_path: dest.to_string_lossy().to_string(),
         title,
@@ -97,15 +96,21 @@ pub async fn upload_document(
     };
 
     conn.execute(
-        "INSERT INTO document (id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20)",
+        "INSERT INTO document (id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19)",
         rusqlite::params![
-            doc.id, doc.project_id, doc.filename, doc.file_path,
+            doc.id, doc.filename, doc.file_path,
             doc.title, doc.authors, doc.year, doc.journal, doc.doi,
             doc.abstract_, doc.domain, doc.subdomain, doc.keywords,
             doc.methodology, doc.dataset_, doc.claims, doc.full_text,
             doc.chunk_count, doc.status, doc.created_at,
         ],
+    ).map_err(|e| e.to_string())?;
+
+    // Link document to project
+    conn.execute(
+        "INSERT OR IGNORE INTO project_document (project_id, document_id) VALUES (?1, ?2)",
+        rusqlite::params![project_id, doc_id],
     ).map_err(|e| e.to_string())?;
 
     // Store doc-level vector
@@ -144,7 +149,7 @@ pub async fn search_knowledge(
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let mut docs_stmt = conn.prepare(
-        "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at FROM document WHERE project_id = ?1 AND status = 'ready'"
+        format!("SELECT {} FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 AND d.status = 'ready'", DOC_COLS).as_str()
     ).map_err(|e| e.to_string())?;
 
     let docs: Vec<Document> = docs_stmt.query_map(rusqlite::params![project_id], doc_from_row)
@@ -185,7 +190,7 @@ pub async fn get_documents(
 ) -> Result<Vec<Document>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut stmt = conn.prepare(
-        "SELECT id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at FROM document WHERE project_id = ?1 ORDER BY created_at DESC"
+        format!("SELECT {} FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 ORDER BY d.created_at DESC", DOC_COLS).as_str()
     ).map_err(|e| e.to_string())?;
 
     let docs = stmt.query_map(rusqlite::params![project_id], doc_from_row)
@@ -330,7 +335,7 @@ fn execute_search(
     // ── Phase 1: Find candidate document IDs ──
     let candidate_doc_ids = {
         let mut doc_sql = String::from(
-            "SELECT id FROM document WHERE project_id = ?1 AND status = 'ready'"
+            "SELECT d.id FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 AND d.status = 'ready'"
         );
         let mut doc_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
 
@@ -411,7 +416,8 @@ fn execute_search(
     let mut chunk_sql = format!(
         "SELECT c.id, c.document_id, d.title, d.authors, d.journal, d.domain, d.methodology, c.heading, c.role, c.text, c.vector
          FROM doc_chunk c JOIN document d ON c.document_id = d.id
-         WHERE d.project_id = ?1 AND c.document_id IN ({})",
+         JOIN project_document pd ON d.id = pd.document_id
+         WHERE pd.project_id = ?1 AND c.document_id IN ({})",
         ph_str
     );
     chunk_sql.push_str(&format!(" LIMIT {}", limit * 5));
@@ -614,8 +620,10 @@ async fn answer_list(
 
 /// Build WHERE clause for document filtering (reusable across count/list/search)
 fn build_doc_filter_sql(project_id: &str, sq: &SearchQuery) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
-    let all_cols = "id, project_id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at";
-    let mut sql = format!("SELECT {} FROM document WHERE project_id = ?1 AND status = 'ready'", all_cols);
+    let mut sql = format!(
+        "SELECT {} FROM document d INNER JOIN project_document pd ON d.id = pd.document_id WHERE pd.project_id = ?1 AND d.status = 'ready'",
+        DOC_COLS
+    );
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
 
     if let Some(ref j) = sq.journal {
@@ -648,6 +656,51 @@ fn describe_query(sq: &SearchQuery) -> String {
     parts.join(" + ")
 }
 
+/// Add existing document to a project
+#[command]
+pub async fn add_doc_to_project(
+    doc_id: String,
+    project_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "INSERT OR IGNORE INTO project_document (project_id, document_id) VALUES (?1, ?2)",
+        rusqlite::params![project_id, doc_id],
+    ).map_err(|e| e.to_string())?;
+    Ok("已添加".to_string())
+}
+
+/// Remove document from a project (doesn't delete the document itself)
+#[command]
+pub async fn remove_doc_from_project(
+    doc_id: String,
+    project_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute(
+        "DELETE FROM project_document WHERE project_id = ?1 AND document_id = ?2",
+        rusqlite::params![project_id, doc_id],
+    ).map_err(|e| e.to_string())?;
+    Ok("已移除".to_string())
+}
+
+/// Get all documents in the global pool (not tied to a project)
+#[command]
+pub async fn get_all_documents(
+    db: State<'_, Arc<Database>>,
+) -> Result<Vec<Document>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        &format!("SELECT {} FROM document ORDER BY created_at DESC", DOC_COLS)
+    ).map_err(|e| e.to_string())?;
+    let docs = stmt.query_map([], doc_from_row)
+        .map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(docs)
+}
+
 /// Delete a document and its vector
 #[command]
 pub async fn delete_document(
@@ -662,15 +715,17 @@ pub async fn delete_document(
     Ok("已删除".to_string())
 }
 
+const DOC_COLS: &str = "id, filename, file_path, title, authors, year, journal, doi, abstract, domain, subdomain, keywords, methodology, dataset, claims, full_text, chunk_count, status, created_at";
+
 fn doc_from_row(row: &rusqlite::Row) -> rusqlite::Result<Document> {
     Ok(Document {
-        id: row.get(0)?, project_id: row.get(1)?, filename: row.get(2)?,
-        file_path: row.get(3)?, title: row.get(4)?, authors: row.get(5)?,
-        year: row.get(6)?, journal: row.get(7)?, doi: row.get(8)?,
-        abstract_: row.get(9)?, domain: row.get(10)?, subdomain: row.get(11)?,
-        keywords: row.get(12)?, methodology: row.get(13)?, dataset_: row.get(14)?,
-        claims: row.get(15)?, full_text: row.get(16)?, chunk_count: row.get(17)?,
-        status: row.get(18)?, created_at: row.get(19)?,
+        id: row.get(0)?, filename: row.get(1)?, file_path: row.get(2)?,
+        title: row.get(3)?, authors: row.get(4)?, year: row.get(5)?,
+        journal: row.get(6)?, doi: row.get(7)?, abstract_: row.get(8)?,
+        domain: row.get(9)?, subdomain: row.get(10)?,
+        keywords: row.get(11)?, methodology: row.get(12)?, dataset_: row.get(13)?,
+        claims: row.get(14)?, full_text: row.get(15)?, chunk_count: row.get(16)?,
+        status: row.get(17)?, created_at: row.get(18)?,
     })
 }
 
