@@ -424,7 +424,7 @@ fn execute_search(
         "SELECT c.id, c.document_id, d.title, d.authors, d.journal, d.domain, d.methodology, c.heading, c.role, c.text, c.vector
          FROM doc_chunk c JOIN document d ON c.document_id = d.id
          JOIN kb_document kd ON d.id = kd.document_id JOIN project_kb pk ON kd.kb_id = pk.kb_id
-         WHERE pd.project_id = ?1 AND c.document_id IN ({})",
+         WHERE pk.project_id = ?1 AND c.document_id IN ({})",
         ph_str
     );
     chunk_sql.push_str(&format!(" LIMIT {}", limit * 5));
