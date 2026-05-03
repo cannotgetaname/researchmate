@@ -76,6 +76,16 @@ impl Database {
             );
 
 
+            CREATE TABLE IF NOT EXISTS doc_chunk (
+                id          TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+                chunk_index INTEGER NOT NULL,
+                heading     TEXT,
+                role        TEXT,
+                text        TEXT NOT NULL,
+                vector      TEXT NOT NULL
+            );
+
             INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
             VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));
             ",

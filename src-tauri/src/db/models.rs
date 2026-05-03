@@ -50,3 +50,39 @@ pub struct Document {
     pub status: String,
     pub created_at: String,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct DocChunk {
+    pub id: String,
+    pub document_id: String,
+    pub chunk_index: i32,
+    pub heading: Option<String>,
+    pub role: Option<String>,
+    pub text: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SearchQuery {
+    pub question: String,
+    pub doc_id: Option<String>,
+    pub journal: Option<String>,
+    pub domain: Option<String>,
+    pub methodology: Option<String>,
+    pub author: Option<String>,
+    pub semantic: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SearchHit {
+    pub chunk_id: String,
+    pub document_id: String,
+    pub title: Option<String>,
+    pub authors: Option<String>,
+    pub journal: Option<String>,
+    pub domain: Option<String>,
+    pub methodology: Option<String>,
+    pub heading: Option<String>,
+    pub role: Option<String>,
+    pub text: String,
+    pub score: f32,
+}
