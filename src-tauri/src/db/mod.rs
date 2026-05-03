@@ -75,8 +75,6 @@ impl Database {
                 created_at  TEXT NOT NULL
             );
 
-            -- Add full_text to existing DBs that predate this migration
-            ALTER TABLE document ADD COLUMN full_text TEXT;
 
             INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
             VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));
