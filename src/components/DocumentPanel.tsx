@@ -150,21 +150,9 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
                   {kb.name} ({kb.doc_count}篇)
                 </label>
               ))}
-              <div style={{ borderTop: "1px solid var(--color-hairline)", marginTop: "4px", paddingTop: "4px" }}>
-                {showNewKb ? (
-                  <div style={{ display: "flex", gap: "4px", padding: "0 var(--space-sm)" }}>
-                    <input type="text" value={newKbName} placeholder="知识库名称" autoFocus
-                      onChange={(e) => setNewKbName(e.target.value)}
-                      onKeyDown={(e) => e.key === "Enter" && handleCreateKb()}
-                      style={{ flex: 1, height: "28px", fontSize: "12px", border: "1px solid var(--color-hairline)", borderRadius: "4px", padding: "0 6px", fontFamily: "var(--font-ui)", outline: "none" }} />
-                    <button onClick={handleCreateKb} style={{ height: "28px", padding: "0 8px", border: "none", borderRadius: "4px", backgroundColor: "var(--color-primary)", color: "#fff", fontSize: "11px", cursor: "pointer" }}>创建</button>
-                    <button onClick={() => setShowNewKb(false)} style={{ height: "28px", padding: "0 6px", border: "none", borderRadius: "4px", backgroundColor: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "11px", cursor: "pointer" }}>×</button>
-                  </div>
-                ) : (
-                  <div onClick={() => setShowNewKb(true)} style={{ padding: "6px var(--space-sm)", fontSize: "12px", color: "var(--color-primary)", cursor: "pointer" }}>
-                    + 新建知识库
-                  </div>
-                )}
+              <div onClick={() => { setShowNewKb(true); setShowKbSelector(false); }}
+                style={{ padding: "6px var(--space-sm)", fontSize: "12px", color: "var(--color-primary)", cursor: "pointer", borderTop: "1px solid var(--color-hairline)", marginTop: "4px" }}>
+                + 新建知识库
               </div>
             </div>
           )}
@@ -258,6 +246,26 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
               style={{ ...btnS, backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)", opacity: asking ? 0.6 : 1 }}>
               {asking ? "..." : "提问"}
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* New KB Dialog */}
+      {showNewKb && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
+          onClick={() => { setShowNewKb(false); setNewKbName(""); }}>
+          <div style={{ backgroundColor: "var(--color-surface-card)", borderRadius: "var(--radius-lg)", padding: "var(--space-xl)", width: "360px", border: "1px solid var(--color-hairline)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: "var(--space-base)", fontSize: "16px" }}>新建知识库</h3>
+            <input type="text" value={newKbName} placeholder="知识库名称" autoFocus
+              onChange={(e) => setNewKbName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleCreateKb()}
+              style={{ width: "100%", height: "40px", padding: "0 var(--space-base)", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-md)", fontFamily: "var(--font-ui)", fontSize: "14px", outline: "none", marginBottom: "var(--space-base)" }} />
+            <div style={{ display: "flex", gap: "var(--space-sm)", justifyContent: "flex-end" }}>
+              <button className="topnav-btn" onClick={() => { setShowNewKb(false); setNewKbName(""); }}>取消</button>
+              <button onClick={handleCreateKb}
+                style={{ height: "36px", padding: "0 18px", border: "none", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)", fontFamily: "var(--font-ui)", fontSize: "14px", fontWeight: 500, cursor: "pointer" }}>创建</button>
+            </div>
           </div>
         </div>
       )}
