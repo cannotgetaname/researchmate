@@ -193,14 +193,20 @@ pub async fn search_knowledge(
 #[command]
 pub async fn get_documents(
     project_id: String,
+    kb_id: Option<String>,
     db: State<'_, Arc<Database>>,
 ) -> Result<Vec<Document>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let mut stmt = conn.prepare(
-        format!("SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 ORDER BY d.created_at DESC", DOC_COLS).as_str()
-    ).map_err(|e| e.to_string())?;
-
-    let docs = stmt.query_map(rusqlite::params![project_id], doc_from_row)
+    let mut sql = format!("SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1", DOC_COLS);
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id)];
+    if let Some(ref kid) = kb_id {
+        sql.push_str(" AND kd.kb_id = ?2");
+        params.push(Box::new(kid.clone()));
+    }
+    sql.push_str(" ORDER BY d.created_at DESC");
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let docs = stmt.query_map(param_refs.as_slice(), doc_from_row)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 

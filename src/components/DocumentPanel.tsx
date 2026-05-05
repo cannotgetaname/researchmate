@@ -28,6 +28,8 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
   const [docs, setDocs] = useState<DocInfo[]>([]);
   const [kbs, setKbs] = useState<KBInfo[]>([]);
   const [selectedKbs, setSelectedKbs] = useState<string[]>([]);
+  const [activeKbId, setActiveKbId] = useState("default");
+  const [crossKbSearch, setCrossKbSearch] = useState(false);
   const [showKbSelector, setShowKbSelector] = useState(false);
   const [newKbName, setNewKbName] = useState("");
   const [showNewKb, setShowNewKb] = useState(false);
@@ -41,16 +43,18 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
   const [asking, setAsking] = useState(false);
 
   const loadDocs = async () => {
-    try { setDocs(await invoke("get_documents", { projectId }) as DocInfo[]); } catch {}
+    try { setDocs(await invoke("get_documents", { projectId, kbId: crossKbSearch ? null : activeKbId }) as DocInfo[]); } catch {}
   };
   const loadKbs = async () => {
     try {
       const list = await invoke("list_knowledge_bases") as KBInfo[];
       setKbs(list);
       if (list.length > 0 && selectedKbs.length === 0) setSelectedKbs(list.map((k) => k.id));
+      if (!list.find(k => k.id === activeKbId)) { setActiveKbId(list[0]?.id ?? "default"); }
     } catch {}
   };
   useEffect(() => { loadDocs(); loadKbs(); }, []);
+  useEffect(() => { loadDocs(); }, [activeKbId, crossKbSearch]);
 
   const toggleKb = (id: string) => {
     setSelectedKbs((prev) => prev.includes(id) ? prev.filter((k) => k !== id) : [...prev, id]);
@@ -116,7 +120,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
       setAnswer((prev) => prev + event.payload.delta);
     });
     try {
-      const result = await invoke<string>("ask_knowledge", { question: q, projectId, kbIds: selectedKbs });
+      const result = await invoke<string>("ask_knowledge", { question: q, projectId, kbIds: crossKbSearch ? selectedKbs : [activeKbId] });
       if (!streamed) setAnswer(result);
     } catch (e) {
       setAnswer((prev) => prev + `\n\n> 错误：${e}`);
@@ -136,7 +140,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
           <div onClick={() => setShowKbSelector(!showKbSelector)}
             style={{ ...btnS, backgroundColor: "var(--color-surface-card)", color: "var(--color-ink)", border: "1px solid var(--color-hairline)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontSize: "12px" }}>
-              知识库：{selectedKbs.length === kbs.length ? "全部" : selectedKbs.length === 0 ? "无" : `${selectedKbs.length}个`}
+              {kbs.find(k => k.id === activeKbId)?.name ?? "选择知识库"}
             </span>
             <span style={{ marginLeft: "4px" }}>{showKbSelector ? "▲" : "▼"}</span>
           </div>
@@ -147,10 +151,10 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
               backgroundColor: "var(--color-surface-card)", border: "1px solid var(--color-hairline)",
               borderRadius: "var(--radius-sm)", padding: "var(--space-xs)", maxHeight: "200px", overflowY: "auto" }}>
               {kbs.map((kb) => (
-                <label key={kb.id} style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "4px var(--space-sm)", fontSize: "12px", cursor: "pointer", color: "var(--color-ink)" }}>
-                  <input type="checkbox" checked={selectedKbs.includes(kb.id)} onChange={() => toggleKb(kb.id)} />
-                  {kb.name} ({kb.doc_count}篇)
-                </label>
+                <div key={kb.id} onClick={() => { setActiveKbId(kb.id); setShowKbSelector(false); }}
+                  style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", padding: "4px var(--space-sm)", fontSize: "12px", cursor: "pointer", color: activeKbId === kb.id ? "var(--color-primary)" : "var(--color-ink)", fontWeight: activeKbId === kb.id ? 600 : 400 }}>
+                  {activeKbId === kb.id ? "●" : "○"} {kb.name} ({kb.doc_count}篇)
+                </div>
               ))}
               <div onClick={() => { setShowNewKb(true); setShowKbSelector(false); }}
                 style={{ padding: "6px var(--space-sm)", fontSize: "12px", color: "var(--color-primary)", cursor: "pointer", borderTop: "1px solid var(--color-hairline)", marginTop: "4px" }}>
@@ -171,6 +175,24 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
             <div key={i} style={{ color: line.includes("失败") ? "var(--color-error)" : line.includes("✓") ? "var(--color-success)" : "var(--color-muted)" }}>{line}</div>
           ))}
           <div onClick={() => setUploadLog([])} style={{ textAlign: "right", color: "var(--color-muted-soft)", cursor: "pointer", marginTop: "2px" }}>清除</div>
+        </div>
+      )}
+
+      {/* Cross-KB toggle */}
+      {kbs.length > 1 && (
+        <label style={{ display: "flex", alignItems: "center", gap: "var(--space-xs)", fontSize: "11px", color: "var(--color-muted)", marginBottom: "var(--space-sm)", cursor: "pointer" }}>
+          <input type="checkbox" checked={crossKbSearch} onChange={(e) => setCrossKbSearch(e.target.checked)} />
+          跨库搜索
+        </label>
+      )}
+      {crossKbSearch && (
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)", marginBottom: "var(--space-sm)" }}>
+          {kbs.map((kb) => (
+            <label key={kb.id} style={{ fontSize: "11px", cursor: "pointer", padding: "2px 8px", borderRadius: "var(--radius-pill)", border: `1px solid ${selectedKbs.includes(kb.id) ? "var(--color-primary)" : "var(--color-hairline)"}`, color: selectedKbs.includes(kb.id) ? "var(--color-primary)" : "var(--color-muted)" }}>
+              <input type="checkbox" checked={selectedKbs.includes(kb.id)} onChange={() => toggleKb(kb.id)} style={{ display: "none" }} />
+              {kb.name}
+            </label>
+          ))}
         </div>
       )}
 
