@@ -68,6 +68,7 @@ pub struct SearchQuery {
     pub domain: Option<String>,
     pub methodology: Option<String>,
     pub author: Option<String>,
+    pub kb_ids: Vec<String>,
     pub semantic: bool,
     pub strategy: String,
     pub max_docs: usize,
@@ -78,7 +79,9 @@ impl Default for SearchQuery {
         Self {
             question: String::new(),
             doc_id: None, journal: None, domain: None,
-            methodology: None, author: None, semantic: true,
+            methodology: None, author: None,
+            kb_ids: vec![],
+            semantic: true,
             strategy: "semantic".to_string(), max_docs: 20,
         }
     }

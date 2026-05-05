@@ -212,6 +212,7 @@ pub async fn get_documents(
 pub async fn ask_knowledge(
     question: String,
     project_id: String,
+    kb_ids: Option<Vec<String>>,
     db: State<'_, Arc<Database>>,
     config: State<'_, Arc<RwLock<AppConfig>>>,
     app_handle: tauri::AppHandle,
@@ -223,7 +224,12 @@ pub async fn ask_knowledge(
     let cfg = { config.read().unwrap().clone() };
 
     // Step 1: LLM parses question into search dimensions
-    let sq = parse_search_intent(&question, &cfg).await?;
+    let mut sq = parse_search_intent(&question, &cfg).await?;
+    if let Some(ids) = kb_ids {
+        if !ids.is_empty() {
+            sq.kb_ids = ids;
+        }
+    }
 
     // Strategy routing
     match sq.strategy.as_str() {
@@ -325,6 +331,7 @@ async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<Searc
         domain: parsed["domain"].as_str().map(String::from),
         methodology: parsed["methodology"].as_str().map(String::from),
         author: parsed["author"].as_str().map(String::from),
+        kb_ids: vec![],
         semantic: strategy != "count" && strategy != "list",
         strategy,
         max_docs,
@@ -366,9 +373,19 @@ fn execute_search(
             doc_params.push(Box::new(format!("%{}%", auth)));
         }
 
+        // Filter by selected KBs
+        if !sq.kb_ids.is_empty() {
+            let placeholders: Vec<String> = sq.kb_ids.iter().enumerate()
+                .map(|(i, _)| format!("?{}", doc_params.len() + i + 1)).collect();
+            doc_sql.push_str(&format!(" AND kd.kb_id IN ({})", placeholders.join(",")));
+            for kb_id in &sq.kb_ids {
+                doc_params.push(Box::new(kb_id.clone()));
+            }
+        }
+
         // If semantic, rank by doc_vector similarity first
         if let Some(qv) = query_vec {
-            if sq.doc_id.is_none() && sq.journal.is_none() && sq.domain.is_none() && sq.author.is_none() {
+            if sq.doc_id.is_none() && sq.journal.is_none() && sq.domain.is_none() && sq.author.is_none() && sq.kb_ids.is_empty() {
                 // Pure semantic: get ALL docs, rank by vector similarity, take top 20
                 doc_sql.push_str(" LIMIT 100");
             }

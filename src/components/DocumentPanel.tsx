@@ -23,8 +23,13 @@ interface SearchResult {
   snippet: string;
 }
 
+interface KBInfo { id: string; name: string; doc_count: number; }
+
 export default function DocumentPanel({ projectId }: { projectId: string }) {
   const [docs, setDocs] = useState<DocInfo[]>([]);
+  const [kbs, setKbs] = useState<KBInfo[]>([]);
+  const [selectedKbs, setSelectedKbs] = useState<string[]>([]);
+  const [showKbSelector, setShowKbSelector] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [status, setStatus] = useState("");
   const [query, setQuery] = useState("");
@@ -45,7 +50,23 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
     }
   };
 
-  useEffect(() => { loadDocs(); }, []);
+  useEffect(() => { loadDocs(); loadKbs(); }, []);
+
+  const loadKbs = async () => {
+    try {
+      const list = await invoke("list_knowledge_bases") as KBInfo[];
+      setKbs(list);
+      if (list.length > 0 && selectedKbs.length === 0) {
+        setSelectedKbs(list.map((k) => k.id));
+      }
+    } catch {}
+  };
+
+  const toggleKb = (id: string) => {
+    setSelectedKbs((prev) =>
+      prev.includes(id) ? prev.filter((k) => k !== id) : [...prev, id]
+    );
+  };
 
   const handleUpload = async () => {
     const selected = await open({
@@ -119,7 +140,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
     });
 
     try {
-      const result = await invoke<string>("ask_knowledge", { question: q, projectId });
+      const result = await invoke<string>("ask_knowledge", { question: q, projectId, kbIds: selectedKbs });
       if (!streamed) {
         // count/list queries return directly without streaming
         setAnswer(result);
@@ -182,7 +203,44 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
           {uploadLog.map((line, i) => (
             <div key={i} style={{ color: line.includes("失败") ? "var(--color-error)" : line.includes("✓") ? "var(--color-success)" : "var(--color-muted)" }}>{line}</div>
           ))}
-          {status && !uploadLog.length && <div>{status}</div>}
+          {/* KB selector */}
+      <div style={{ marginBottom: "var(--space-sm)", position: "relative" }}>
+        <div
+          onClick={() => setShowKbSelector(!showKbSelector)}
+          style={{
+            fontSize: "12px", color: "var(--color-muted)", cursor: "pointer",
+            padding: "4px var(--space-sm)", border: "1px solid var(--color-hairline)",
+            borderRadius: "var(--radius-sm)", display: "flex", justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
+          <span>
+            知识库：{selectedKbs.length === kbs.length ? "全部" : selectedKbs.length === 0 ? "无" : `${selectedKbs.length} 个已选`}
+          </span>
+          <span>{showKbSelector ? "▲" : "▼"}</span>
+        </div>
+        {showKbSelector && (
+          <div style={{
+            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10,
+            backgroundColor: "var(--color-surface-card)", border: "1px solid var(--color-hairline)",
+            borderRadius: "var(--radius-sm)", padding: "var(--space-xs)", marginTop: "2px",
+            maxHeight: "160px", overflowY: "auto",
+          }}>
+            {kbs.map((kb) => (
+              <label key={kb.id} style={{
+                display: "flex", alignItems: "center", gap: "var(--space-xs)",
+                padding: "4px var(--space-sm)", fontSize: "12px", cursor: "pointer",
+                color: "var(--color-ink)",
+              }}>
+                <input type="checkbox" checked={selectedKbs.includes(kb.id)} onChange={() => toggleKb(kb.id)} />
+                {kb.name} ({kb.doc_count}篇)
+              </label>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {status && !uploadLog.length && <div>{status}</div>}
         </div>
       )}
 
