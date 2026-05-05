@@ -114,12 +114,17 @@ pub async fn upload_document(
         rusqlite::params![doc_id],
     ).map_err(|e| e.to_string())?;
 
-    // If uploaded to a specific KB, also link there
+    // If uploaded to a specific KB, also link there AND ensure KB is linked to projects
     if let Some(ref kid) = kb_id {
         if kid != "default" {
             conn.execute(
                 "INSERT OR IGNORE INTO kb_document (kb_id, document_id) VALUES (?1, ?2)",
                 rusqlite::params![kid, doc_id],
+            ).map_err(|e| e.to_string())?;
+            // Ensure this KB is linked to all projects
+            conn.execute(
+                "INSERT OR IGNORE INTO project_kb (project_id, kb_id) SELECT id, ?1 FROM project",
+                rusqlite::params![kid],
             ).map_err(|e| e.to_string())?;
         }
     }
@@ -766,6 +771,12 @@ pub async fn create_knowledge_base(
     conn.execute(
         "INSERT INTO knowledge_base (id, name, description, created_at) VALUES (?1,?2,?3,?4)",
         rusqlite::params![id, name, None::<String>, chrono::Utc::now().to_rfc3339()],
+    ).map_err(|e| e.to_string())?;
+
+    // Auto-link to all existing projects so the KB is immediately usable
+    conn.execute(
+        "INSERT OR IGNORE INTO project_kb (project_id, kb_id) SELECT id, ?1 FROM project",
+        rusqlite::params![id],
     ).map_err(|e| e.to_string())?;
     Ok(id)
 }
