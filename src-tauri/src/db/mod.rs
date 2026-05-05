@@ -105,7 +105,7 @@ impl Database {
             );
 
             INSERT OR IGNORE INTO knowledge_base (id, name, description, created_at)
-            VALUES ('default', '默认知识库', '默认文献库', datetime('now'));
+            VALUES ('default', '总知识库', '所有文献默认归属', datetime('now'));
 
             INSERT OR IGNORE INTO kb_document (kb_id, document_id)
             SELECT 'default', id FROM document;
@@ -114,7 +114,7 @@ impl Database {
             SELECT p.id, 'default' FROM project p;
 
             INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
-            VALUES ('default', '默认课题', '默认科研项目', datetime('now'), datetime('now'));
+            VALUES ('default', '默认项目', '默认科研项目', datetime('now'), datetime('now'));
             ",
         )?;
 

@@ -61,15 +61,21 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
   useEffect(() => { setSearchKbIds([activeKbId]); }, [activeKbId]);
   useEffect(() => { loadDocs(); }, [activeKbId]);
 
-  const handleDeleteKb = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (id === "default") return;
-    if (!confirm("删除知识库将取消其中所有文献的关联（文献本身保留），确定？")) return;
-    try {
-      await invoke("delete_knowledge_base", { kbId: id });
-      await loadKbs();
-      if (activeKbId === id) setActiveKbId("default");
-    } catch (err) { alert(`删除失败：${err}`); }
+  const [deleteKbTarget, setDeleteKbTarget] = useState<{id: string, name: string} | null>(null);
+  const [deleteKbConfirm, setDeleteKbConfirm] = useState("");
+
+  const handleDeleteKb = async (id: string, name: string) => {
+    if (deleteKbTarget?.id === id) {
+      if (deleteKbConfirm !== name) return;
+      try {
+        await invoke("delete_knowledge_base", { kbId: id });
+        setDeleteKbTarget(null); setDeleteKbConfirm("");
+        await loadKbs();
+        if (activeKbId === id) setActiveKbId("default");
+      } catch (err) { alert(`删除失败：${err}`); }
+    } else {
+      setDeleteKbTarget({ id, name }); setDeleteKbConfirm("");
+    }
   };
 
   const toggleSearchKb = (id: string) => {
@@ -167,7 +173,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
           {/* KB list with doc counts + delete */}
           <div style={{ display: "flex", flexWrap: "wrap", gap: "var(--space-xs)" }}>
             {kbs.map((kb) => (
-              <div key={kb.id} onClick={() => setActiveKbId(kb.id)}
+              <div key={kb.id} onClick={() => { setActiveKbId(kb.id); setDeleteKbTarget(null); }}
                 style={{ display: "flex", alignItems: "center", gap: "4px", fontSize: "11px", cursor: "pointer",
                   padding: "4px 10px", borderRadius: "var(--radius-pill)",
                   border: `1px solid ${activeKbId === kb.id ? "var(--color-primary)" : "var(--color-hairline)"}`,
@@ -176,13 +182,35 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
                   fontWeight: activeKbId === kb.id ? 600 : 400 }}>
                 {kb.name} ({kb.doc_count})
                 {kb.id !== "default" && (
-                  <span onClick={(e) => handleDeleteKb(kb.id, e)}
-                    style={{ color: "var(--color-muted-soft)", fontSize: "14px", lineHeight: 1, padding: "0 2px" }}
+                  <span onClick={(e) => { e.stopPropagation(); handleDeleteKb(kb.id, kb.name); }}
+                    style={{ color: "var(--color-muted-soft)", fontSize: "12px", lineHeight: 1, padding: "0 2px", opacity: 0.5 }}
                     title="删除知识库">×</span>
                 )}
               </div>
             ))}
           </div>
+
+          {/* Delete KB confirmation */}
+          {deleteKbTarget && (
+            <div style={{ marginTop: "var(--space-sm)", padding: "var(--space-sm)", border: "1px solid var(--color-error)", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-surface-card)" }}>
+              <div style={{ fontSize: "12px", color: "var(--color-error)", marginBottom: "var(--space-xs)" }}>
+                删除 <b>{deleteKbTarget.name}</b>？文献保留在总知识库中，不会丢失。请输入知识库名称确认：
+              </div>
+              <div style={{ display: "flex", gap: "var(--space-xs)" }}>
+                <input type="text" value={deleteKbConfirm} placeholder={deleteKbTarget.name}
+                  onChange={(e) => setDeleteKbConfirm(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleDeleteKb(deleteKbTarget.id, deleteKbTarget.name)}
+                  autoFocus
+                  style={{ flex: 1, height: "32px", fontSize: "12px", padding: "0 var(--space-sm)", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-sm)", outline: "none", fontFamily: "var(--font-ui)" }} />
+                <button onClick={() => handleDeleteKb(deleteKbTarget.id, deleteKbTarget.name)}
+                  style={{ height: "32px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-error)", color: "#fff", fontSize: "12px", cursor: deleteKbConfirm !== deleteKbTarget.name ? "not-allowed" : "pointer", opacity: deleteKbConfirm !== deleteKbTarget.name ? 0.5 : 1 }}>
+                  确认删除
+                </button>
+                <button onClick={() => { setDeleteKbTarget(null); setDeleteKbConfirm(""); }}
+                  style={{ height: "32px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", backgroundColor: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "12px", cursor: "pointer" }}>取消</button>
+              </div>
+            </div>
+          )}
         </div>
       )}
 

@@ -107,17 +107,16 @@ pub async fn upload_document(
         ],
     ).map_err(|e| e.to_string())?;
 
-    // Link document to knowledge base (and auto-link to all projects using this KB)
-    let kb_id = get_or_create_default_kb(&conn);
+    // Link document to the default KB (always) and also to any project-linked KBs
     conn.execute(
-        "INSERT OR IGNORE INTO kb_document (kb_id, document_id) VALUES (?1, ?2)",
-        rusqlite::params![kb_id, doc_id],
+        "INSERT OR IGNORE INTO kb_document (kb_id, document_id) VALUES ('default', ?1)",
+        rusqlite::params![doc_id],
     ).map_err(|e| e.to_string())?;
 
-    // Also ensure default project links to this KB
+    // Also ensure default project links to default KB
     conn.execute(
-        "INSERT OR IGNORE INTO project_kb (project_id, kb_id) VALUES ('default', ?1)",
-        rusqlite::params![kb_id],
+        "INSERT OR IGNORE INTO project_kb (project_id, kb_id) VALUES ('default', 'default')",
+        [],
     ).map_err(|e| e.to_string())?;
 
     // Store doc-level vector
@@ -767,7 +766,7 @@ pub async fn delete_knowledge_base(
     db: State<'_, Arc<Database>>,
 ) -> Result<String, String> {
     if kb_id == "default" {
-        return Err("不能删除默认知识库".to_string());
+        return Err("不能删除总知识库".to_string());
     }
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     conn.execute("DELETE FROM kb_document WHERE kb_id = ?1", rusqlite::params![kb_id]).map_err(|e| e.to_string())?;

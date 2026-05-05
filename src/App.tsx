@@ -50,7 +50,7 @@ export default function App() {
   const [showNewProject, setShowNewProject] = useState(false);
   const [fillText, setFillText] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
-  const [projects, setProjects] = useState<ProjectInfo[]>([{ id: "default", name: "默认课题" }]);
+  const [projects, setProjects] = useState<ProjectInfo[]>([{ id: "default", name: "默认项目" }]);
   const [activeProject, setActiveProject] = useState("default");
   const [newProjectName, setNewProjectName] = useState("");
 
