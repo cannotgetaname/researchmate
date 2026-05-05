@@ -141,7 +141,9 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
             <span style={{ marginLeft: "4px" }}>{showKbSelector ? "▲" : "▼"}</span>
           </div>
           {showKbSelector && (
-            <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: 2,
+            <>
+              <div onClick={() => setShowKbSelector(false)} style={{ position: "fixed", inset: 0, zIndex: 9 }} />
+              <div style={{ position: "absolute", top: "100%", left: 0, right: 0, zIndex: 10, marginTop: 2,
               backgroundColor: "var(--color-surface-card)", border: "1px solid var(--color-hairline)",
               borderRadius: "var(--radius-sm)", padding: "var(--space-xs)", maxHeight: "200px", overflowY: "auto" }}>
               {kbs.map((kb) => (
@@ -155,6 +157,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
                 + 新建知识库
               </div>
             </div>
+            </>
           )}
         </div>
       </div>
