@@ -760,6 +760,22 @@ pub async fn create_knowledge_base(
     Ok(id)
 }
 
+/// Delete a knowledge base and its document links (documents stay in pool)
+#[command]
+pub async fn delete_knowledge_base(
+    kb_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    if kb_id == "default" {
+        return Err("不能删除默认知识库".to_string());
+    }
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM kb_document WHERE kb_id = ?1", rusqlite::params![kb_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM project_kb WHERE kb_id = ?1", rusqlite::params![kb_id]).map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM knowledge_base WHERE id = ?1", rusqlite::params![kb_id]).map_err(|e| e.to_string())?;
+    Ok("已删除".to_string())
+}
+
 /// Link a knowledge base to a project
 #[command]
 pub async fn link_kb_to_project(

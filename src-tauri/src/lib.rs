@@ -43,6 +43,7 @@ pub fn run() {
             commands::literature::create_knowledge_base,
             commands::literature::link_kb_to_project,
             commands::literature::unlink_kb_from_project,
+            commands::literature::delete_knowledge_base,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
