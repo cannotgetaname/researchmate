@@ -155,7 +155,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
     <div style={{ display: "flex", flexDirection: "column", height: "100%", padding: "var(--space-base)" }}>
       {/* ── Knowledge Base Section ── */}
       <div onClick={() => setExpanded(expanded === "kb" ? "docs" : "kb")} style={sectionH}>
-        <span>知识库管理</span>
+        <span>知识库管理 · {kbs.find(k => k.id === activeKbId)?.name ?? ""}</span>
         <span>{expanded === "kb" ? "▲" : "▶"}</span>
       </div>
       {expanded === "kb" && (
@@ -211,21 +211,20 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
               </div>
             </div>
           )}
+          <button onClick={handleUpload} disabled={uploading}
+            style={{ ...btnS, backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)", width: "100%", marginTop: "var(--space-sm)", opacity: uploading ? 0.6 : 1 }}>
+            {uploading ? "上传中..." : "+ 上传 PDF 到当前知识库"}
+          </button>
         </div>
       )}
 
       {/* ── Document Operations Section ── */}
       <div onClick={() => setExpanded(expanded === "docs" ? "kb" : "docs")} style={sectionH}>
-        <span>文献工作</span>
+        <span>检索与问答</span>
         <span>{expanded === "docs" ? "▲" : "▶"}</span>
       </div>
       {expanded === "docs" && (
         <>
-          {/* Upload button */}
-          <button onClick={handleUpload} disabled={uploading}
-            style={{ ...btnS, backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)", width: "100%", marginBottom: "var(--space-sm)", opacity: uploading ? 0.6 : 1 }}>
-            {uploading ? "上传中..." : "+ 上传 PDF"}
-          </button>
 
           {/* Search scope: KB pills (multi-select) */}
           {kbs.length > 1 && (
