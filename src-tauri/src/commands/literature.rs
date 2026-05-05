@@ -171,7 +171,7 @@ pub async fn search_knowledge(
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
     let mut docs_stmt = conn.prepare(
-        format!("SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'", DOC_COLS).as_str()
+        format!("SELECT DISTINCT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'", DOC_COLS).as_str()
     ).map_err(|e| e.to_string())?;
 
     let docs: Vec<Document> = docs_stmt.query_map(rusqlite::params![project_id], doc_from_row)
@@ -212,7 +212,7 @@ pub async fn get_documents(
     db: State<'_, Arc<Database>>,
 ) -> Result<Vec<Document>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let mut sql = format!("SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1", DOC_COLS);
+    let mut sql = format!("SELECT DISTINCT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1", DOC_COLS);
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id)];
     if let Some(ref kid) = kb_id {
         sql.push_str(" AND kd.kb_id = ?2");
@@ -370,7 +370,7 @@ fn execute_search(
     // ── Phase 1: Find candidate document IDs ──
     let candidate_doc_ids = {
         let mut doc_sql = String::from(
-            "SELECT d.id FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'"
+            "SELECT DISTINCT d.id FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'"
         );
         let mut doc_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
 
@@ -673,7 +673,7 @@ fn get_or_create_default_kb(conn: &rusqlite::Connection) -> String {
 
 fn build_doc_filter_sql(project_id: &str, sq: &SearchQuery) -> (String, Vec<Box<dyn rusqlite::types::ToSql>>) {
     let mut sql = format!(
-        "SELECT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'",
+        "SELECT DISTINCT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'",
         DOC_COLS
     );
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
