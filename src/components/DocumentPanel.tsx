@@ -48,7 +48,13 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
   const [expanded, setExpanded] = useState<"kb" | "docs">("docs");
 
   const loadDocs = async () => {
-    try { setDocs(await invoke("get_documents", { projectId, kbId: activeKbId }) as DocInfo[]); } catch {}
+    // Show docs for selected search KB; if only one selected, load just that KB
+    const kb = searchKbIds.length === 1 ? searchKbIds[0] : null;
+    try {
+      let result = await invoke("get_documents", { projectId, kbId: kb }) as DocInfo[];
+      result.sort((a, b) => (a.title ?? a.filename).localeCompare(b.title ?? b.filename, "zh"));
+      setDocs(result);
+    } catch {}
   };
   const loadKbs = async () => {
     try {
@@ -59,7 +65,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
   };
   useEffect(() => { loadDocs(); loadKbs(); }, []);
   useEffect(() => { setSearchKbIds([activeKbId]); }, [activeKbId]);
-  useEffect(() => { loadDocs(); }, [activeKbId]);
+  useEffect(() => { loadDocs(); }, [activeKbId, searchKbIds]);
 
   const [deleteKbTarget, setDeleteKbTarget] = useState<{id: string, name: string} | null>(null);
   const [deleteKbConfirm, setDeleteKbConfirm] = useState("");
@@ -109,7 +115,7 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
       log.push(`[${i + 1}/${files.length}] ${name} — 处理中...`);
       setUploadLog([...log]);
       try {
-        await invoke("upload_document", { filePath: files[i], projectId });
+        await invoke("upload_document", { filePath: files[i], projectId, kbId: activeKbId });
         log[i] = `[${i + 1}/${files.length}] ${name} — ✓ 完成`;
       } catch (e) {
         log[i] = `[${i + 1}/${files.length}] ${name} — ✗ 失败：${e}`;
@@ -215,6 +221,18 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
             style={{ ...btnS, backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)", width: "100%", marginTop: "var(--space-sm)", opacity: uploading ? 0.6 : 1 }}>
             {uploading ? "上传中..." : "+ 上传 PDF 到当前知识库"}
           </button>
+
+          {/* Upload log */}
+          {uploadLog.length > 0 && (
+            <div style={{ fontSize: "11px", marginTop: "var(--space-sm)", maxHeight: "100px", overflowY: "auto",
+              backgroundColor: "var(--color-canvas-soft)", borderRadius: "var(--radius-sm)",
+              padding: "var(--space-xs) var(--space-sm)", fontFamily: "var(--font-code)", lineHeight: 1.8 }}>
+              {uploadLog.map((line, i) => (
+                <div key={i} style={{ color: line.includes("失败") ? "var(--color-error)" : line.includes("✓") ? "var(--color-success)" : "var(--color-muted)" }}>{line}</div>
+              ))}
+              <div onClick={() => setUploadLog([])} style={{ textAlign: "right", color: "var(--color-muted-soft)", cursor: "pointer", marginTop: "2px" }}>清除</div>
+            </div>
+          )}
         </div>
       )}
 
@@ -238,18 +256,6 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
                   {kb.name}
                 </div>
               ))}
-            </div>
-          )}
-
-          {/* Upload log */}
-          {uploadLog.length > 0 && (
-            <div style={{ fontSize: "11px", marginBottom: "var(--space-sm)", maxHeight: "100px", overflowY: "auto",
-              backgroundColor: "var(--color-canvas-soft)", borderRadius: "var(--radius-sm)",
-              padding: "var(--space-xs) var(--space-sm)", fontFamily: "var(--font-code)", lineHeight: 1.8 }}>
-              {uploadLog.map((line, i) => (
-                <div key={i} style={{ color: line.includes("失败") ? "var(--color-error)" : line.includes("✓") ? "var(--color-success)" : "var(--color-muted)" }}>{line}</div>
-              ))}
-              <div onClick={() => setUploadLog([])} style={{ textAlign: "right", color: "var(--color-muted-soft)", cursor: "pointer", marginTop: "2px" }}>清除</div>
             </div>
           )}
 

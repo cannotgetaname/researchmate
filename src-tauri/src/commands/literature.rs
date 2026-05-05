@@ -20,6 +20,7 @@ pub struct SearchResult {
 pub async fn upload_document(
     file_path: String,
     project_id: String,
+    kb_id: Option<String>,
     db: State<'_, Arc<Database>>,
     config: State<'_, Arc<RwLock<AppConfig>>>,
 ) -> Result<Document, String> {
@@ -107,11 +108,21 @@ pub async fn upload_document(
         ],
     ).map_err(|e| e.to_string())?;
 
-    // Link document to the default KB (always) and also to any project-linked KBs
+    // Link document to the default KB (always)
     conn.execute(
         "INSERT OR IGNORE INTO kb_document (kb_id, document_id) VALUES ('default', ?1)",
         rusqlite::params![doc_id],
     ).map_err(|e| e.to_string())?;
+
+    // If uploaded to a specific KB, also link there
+    if let Some(ref kid) = kb_id {
+        if kid != "default" {
+            conn.execute(
+                "INSERT OR IGNORE INTO kb_document (kb_id, document_id) VALUES (?1, ?2)",
+                rusqlite::params![kid, doc_id],
+            ).map_err(|e| e.to_string())?;
+        }
+    }
 
     // Also ensure default project links to default KB
     conn.execute(
