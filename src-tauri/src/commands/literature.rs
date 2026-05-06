@@ -30,9 +30,10 @@ pub async fn upload_document(
         .unwrap_or_else(|| "unknown.pdf".to_string());
     let doc_id = uuid::Uuid::new_v4().to_string();
 
-    // Copy to data dir
-    let data_dir = dirs::home_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
+    // Copy to data dir (project root = parent of src-tauri/)
+    let data_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
         .join(".researchmate")
         .join("projects")
         .join(&project_id)

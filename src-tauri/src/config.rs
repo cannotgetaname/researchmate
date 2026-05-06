@@ -9,7 +9,7 @@ pub const MODULES: &[&str] = &["writing", "analysis", "literature", "project_mgm
 pub const EMBEDDING_PROVIDERS: &[&str] = &["ollama", "openai"];
 
 /// Supported PDF parsers
-pub const PDF_PARSERS: &[&str] = &["native", "opendataloader"];
+pub const PDF_PARSERS: &[&str] = &["native", "pymupdf", "opendataloader"];
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AppConfig {

@@ -16,9 +16,10 @@ interface EditorToolbarProps {
   editor: editor.IStandaloneCodeEditor | null;
   onExport: (format: "docx" | "pdf") => void;
   onGenerateTemplate: () => void;
+  onOpenAdvancedTemplate: () => void;
 }
 
-export default function EditorToolbar({ editor, onExport, onGenerateTemplate }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, onExport, onGenerateTemplate, onOpenAdvancedTemplate }: EditorToolbarProps) {
   const [showTableDlg, setShowTableDlg] = useState(false);
   const [tableCols, setTableCols] = useState(3);
   const [tableRows, setTableRows] = useState(3);
@@ -150,8 +151,11 @@ export default function EditorToolbar({ editor, onExport, onGenerateTemplate }: 
       <div style={{ flex: 1 }} />
 
       {/* Template */}
-      <button style={btn} onClick={onGenerateTemplate} title="生成参考模板（三线表等）">
+      <button style={btn} onClick={onGenerateTemplate} title="生成基础参考模板">
         📄 模板
+      </button>
+      <button style={btn} onClick={onOpenAdvancedTemplate} title="高级模板设置（需要 Python + python-docx）">
+        ⚙️
       </button>
 
       {/* Export */}

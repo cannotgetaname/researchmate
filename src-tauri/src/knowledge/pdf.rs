@@ -5,6 +5,7 @@ use crate::config::AppConfig;
 /// Extract text from PDF. Dispatches to the configured parser.
 pub fn extract_pdf_text(path: &Path, config: &AppConfig) -> Result<String, String> {
     match config.pdf_parser.as_str() {
+        "pymupdf" => extract_with_pymupdf(path, config),
         "opendataloader" => extract_with_opendataloader(path, config),
         _ => extract_native(path),
     }
@@ -14,6 +15,59 @@ pub fn extract_pdf_text(path: &Path, config: &AppConfig) -> Result<String, Strin
 fn extract_native(path: &Path) -> Result<String, String> {
     pdf_extract::extract_text(path)
         .map_err(|e| format!("PDF 解析失败：{}", e))
+}
+
+/// Use pymupdf (fitz) for better text + table extraction. `pip install pymupdf`
+fn extract_with_pymupdf(path: &Path, config: &AppConfig) -> Result<String, String> {
+    let path_str = path.to_string_lossy();
+    let script = format!(
+        r#"
+import sys
+try:
+    import fitz
+except ImportError:
+    print("ERROR: 未安装 pymupdf。运行: pip install pymupdf", file=sys.stderr)
+    sys.exit(2)
+
+try:
+    doc = fitz.open("{}")
+    text = ""
+    for page in doc:
+        text += page.get_text("text") + "\n"
+    doc.close()
+    print(text)
+except Exception as e:
+    print(f"ERROR: {{e}}", file=sys.stderr)
+    sys.exit(1)
+"#,
+        path_str.replace('\\', "\\\\").replace('"', "\\\""),
+    );
+
+    let output = std::process::Command::new(&config.python_path)
+        .arg("-c")
+        .arg(&script)
+        .output()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                format!("未找到 {}。请安装 Python 3", config.python_path)
+            } else {
+                format!("Python 调用失败：{}", e)
+            }
+        })?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if output.status.code() == Some(2) {
+            return Err(format!("pymupdf 未安装。运行: pip install pymupdf\n\n{}", stderr));
+        }
+        return Err(format!("pymupdf 解析失败：{}", stderr));
+    }
+
+    let text = String::from_utf8_lossy(&output.stdout).to_string();
+    if text.trim().is_empty() {
+        return Err("pymupdf 返回空内容，PDF 可能是扫描版图片".to_string());
+    }
+    Ok(text)
 }
 
 /// Use OpenDataLoader PDF (Python subprocess) for structured extraction

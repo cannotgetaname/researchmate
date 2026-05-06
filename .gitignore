@@ -4,6 +4,9 @@ dist/
 .DS_Store
 *.log
 
+# App runtime data
+.researchmate/
+
 # Pandoc binaries (huge, handled by Tauri sidecar)
 src-tauri/binaries/
 project/

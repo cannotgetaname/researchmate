@@ -8,8 +8,10 @@ use db::Database;
 use std::sync::{Arc, RwLock};
 
 pub fn run() {
-    let app_dir = dirs::home_dir()
-        .unwrap_or_else(|| std::path::PathBuf::from("."))
+    // Use project root (parent of src-tauri/) in dev, next to exe in release
+    let app_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
         .join(".researchmate");
 
     let database = Database::new(&app_dir).expect("failed to initialize database");
@@ -48,6 +50,7 @@ pub fn run() {
             commands::export::export_document,
             commands::export::preview_html,
             commands::export::generate_template,
+            commands::export::generate_template_advanced,
             commands::version::git_init,
             commands::version::save_version,
             commands::version::list_versions,

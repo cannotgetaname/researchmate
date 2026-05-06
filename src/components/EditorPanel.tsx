@@ -50,6 +50,19 @@ export default function EditorPanel({
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(true);
   const [exportMsg, setExportMsg] = useState("");
+  const [showTemplateDlg, setShowTemplateDlg] = useState(false);
+  const [tmplBodyFont, setTmplBodyFont] = useState("SimSun");
+  const [tmplBodyLatin, setTmplBodyLatin] = useState("Times New Roman");
+  const [tmplHeadFont, setTmplHeadFont] = useState("SimHei");
+  const [tmplBodySize, setTmplBodySize] = useState(12);
+  const [tmplLineSpace, setTmplLineSpace] = useState(1.5);
+  const [tmplMargin, setTmplMargin] = useState(2.5);
+  const [tmplTableStyle, setTmplTableStyle] = useState("three_line");
+  const [tmplIndent, setTmplIndent] = useState(2);
+  const [tmplParaSpace, setTmplParaSpace] = useState(0);
+  const [tmplHeadingNum, setTmplHeadingNum] = useState(true);
+  const [tmplPageSize, setTmplPageSize] = useState("A4");
+  const [tmplCodeSize, setTmplCodeSize] = useState(10);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const citationDecoRef = useRef<monaco.editor.IEditorDecorationsCollection | null>(null);
   const decorationsRef = useRef<monaco.editor.IModelDeltaDecoration[]>([]);
@@ -249,6 +262,7 @@ export default function EditorPanel({
             setExportMsg(`模板已生成：${path}\n请用 Word 打开编辑（三线表、中文宋体等），之后导出自动使用。`);
           } catch (e) { setExportMsg(`生成失败：${e}`); }
         }}
+        onOpenAdvancedTemplate={() => setShowTemplateDlg(true)}
       />
 
       {/* Export status */}
@@ -325,6 +339,71 @@ export default function EditorPanel({
         )}
       </div>
 
+      {/* Advanced Template Dialog */}
+      {showTemplateDlg && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1002 }}
+          onClick={() => setShowTemplateDlg(false)}>
+          <div style={{ backgroundColor: "var(--color-surface-card)", borderRadius: "var(--radius-lg)", padding: "var(--space-xl)", width: "460px", maxHeight: "85vh", overflowY: "auto", border: "1px solid var(--color-hairline)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <h3 style={{ marginBottom: "var(--space-base)", fontSize: "16px" }}>高级模板设置</h3>
+            <div style={{ fontSize: "11px", color: "var(--color-muted-soft)", marginBottom: "var(--space-base)" }}>
+              需要 Python 3 + <code>pip install python-docx</code> 才能生成自定义模板。未安装则退化为基础模板。
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                <TmplField label="中文字体"><TmplSelect value={tmplBodyFont} onChange={setTmplBodyFont} opts={["SimSun:宋体", "SimHei:黑体", "KaiTi:楷体", "FangSong:仿宋", "Microsoft YaHei:微软雅黑"]} /></TmplField>
+                <TmplField label="西文字体"><TmplSelect value={tmplBodyLatin} onChange={setTmplBodyLatin} opts={["Times New Roman", "Arial", "Calibri", "Cambria"]} /></TmplField>
+              </div>
+              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                <TmplField label="标题字体"><TmplSelect value={tmplHeadFont} onChange={setTmplHeadFont} opts={["SimHei:黑体", "SimSun:宋体", "Microsoft YaHei:微软雅黑"]} /></TmplField>
+                <TmplField label="正文字号"><TmplSelect value={String(tmplBodySize)} onChange={(v) => setTmplBodySize(Number(v))} opts={["10:五号(10pt)", "12:小四(12pt)", "14:四号(14pt)"]} /></TmplField>
+              </div>
+              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                <TmplField label="行距"><TmplSelect value={String(tmplLineSpace)} onChange={(v) => setTmplLineSpace(Number(v))} opts={["1:单倍", "1.5:1.5倍", "2:双倍"]} /></TmplField>
+                <TmplField label="页边距"><TmplSelect value={String(tmplMargin)} onChange={(v) => setTmplMargin(Number(v))} opts={["2:窄(2cm)", "2.5:标准(2.5cm)", "3:宽(3cm)"]} /></TmplField>
+              </div>
+              <TmplField label="表格样式"><TmplSelect value={tmplTableStyle} onChange={setTmplTableStyle} opts={["three_line:三线表", "full_grid:全框表"]} /></TmplField>
+              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                <TmplField label="首行缩进"><TmplSelect value={String(tmplIndent)} onChange={(v) => setTmplIndent(Number(v))} opts={["0:无", "2:2字符", "4:4字符"]} /></TmplField>
+                <TmplField label="段间距"><TmplSelect value={String(tmplParaSpace)} onChange={(v) => setTmplParaSpace(Number(v))} opts={["0:无", "6:6pt", "12:12pt"]} /></TmplField>
+              </div>
+              <div style={{ display: "flex", gap: "var(--space-sm)" }}>
+                <TmplField label="标题编号"><TmplSelect value={tmplHeadingNum ? "1" : "0"} onChange={(v) => setTmplHeadingNum(v === "1")} opts={["1:自动编号", "0:无编号"]} /></TmplField>
+                <TmplField label="页面大小"><TmplSelect value={tmplPageSize} onChange={setTmplPageSize} opts={["A4", "Letter"]} /></TmplField>
+              </div>
+              <TmplField label="代码字号"><TmplSelect value={String(tmplCodeSize)} onChange={(v) => setTmplCodeSize(Number(v))} opts={["9:9pt", "10:10pt", "11:11pt"]} /></TmplField>
+            </div>
+
+            <div style={{ display: "flex", gap: "var(--space-sm)", marginTop: "var(--space-lg)", justifyContent: "flex-end" }}>
+              <button className="topnav-btn" onClick={() => setShowTemplateDlg(false)}>取消</button>
+              <button style={{ height: "36px", padding: "0 18px", border: "none", borderRadius: "var(--radius-md)", backgroundColor: "var(--color-primary)", color: "var(--color-on-primary)", fontFamily: "var(--font-ui)", fontSize: "14px", fontWeight: 500, cursor: "pointer" }}
+                onClick={async () => {
+                  setShowTemplateDlg(false);
+                  setExportMsg("正在生成高级模板...");
+                  try {
+                    const config = {
+                      body_font: tmplBodyFont, body_font_latin: tmplBodyLatin,
+                      heading_font: tmplHeadFont, body_size: tmplBodySize,
+                      line_spacing: tmplLineSpace, page_margin_cm: tmplMargin,
+                      table_style: tmplTableStyle,
+                      indent_chars: tmplIndent,
+                      paragraph_spacing: tmplParaSpace,
+                      heading_numbering: tmplHeadingNum,
+                      page_size: tmplPageSize,
+                      code_size: tmplCodeSize,
+                    };
+                    const msg = await invoke<string>("generate_template_advanced", { config });
+                    setExportMsg(msg);
+                  } catch (e) { setExportMsg(`生成失败：${e}`); }
+                }}>
+                生成模板
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Custom context menu */}
       {ctxMenu.visible && (
         <div
@@ -364,5 +443,26 @@ export default function EditorPanel({
         </div>
       )}
     </div>
+  );
+}
+
+function TmplField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ flex: 1 }}>
+      <div style={{ fontSize: "11px", color: "var(--color-muted)", marginBottom: "var(--space-xxs)" }}>{label}</div>
+      {children}
+    </div>
+  );
+}
+
+function TmplSelect({ value, onChange, opts }: { value: string; onChange: (v: string) => void; opts: string[] }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)}
+      style={{ width: "100%", height: "32px", padding: "0 var(--space-sm)", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-md)", fontFamily: "var(--font-ui)", fontSize: "13px", outline: "none", backgroundColor: "var(--color-surface-card)", cursor: "pointer" }}>
+      {opts.map((opt) => {
+        const [val, ...labelParts] = opt.split(":");
+        return <option key={val} value={val}>{labelParts.join(":") || val}</option>;
+      })}
+    </select>
   );
 }

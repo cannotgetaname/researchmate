@@ -262,7 +262,10 @@ export default function App() {
             <SectionHeader>PDF 解析</SectionHeader>
             <Field label="引擎" mt={false}>
               <select value={pdfParser} onChange={(e) => setPdfParser(e.target.value)} style={selectS}>
-                {(cfg?.pdf_parsers ?? ["native", "opendataloader"]).map((p) => <option key={p} value={p}>{p === "native" ? "Native（Rust 内置）" : "OpenDataLoader（Python）"}</option>)}
+                {(cfg?.pdf_parsers ?? ["native", "pymupdf", "opendataloader"]).map((p) => <option key={p} value={p}>{
+  p === "native" ? "Native（Rust 内置，零依赖）" :
+  p === "pymupdf" ? "pymupdf（Python，pip install pymupdf）" :
+  "OpenDataLoader（Python + Java 11）"}</option>)}
               </select>
             </Field>
             <Field label="Python 路径"><input type="text" value={pythonPath} placeholder="python3" onChange={(e) => setPythonPath(e.target.value)} style={inputS} /></Field>
