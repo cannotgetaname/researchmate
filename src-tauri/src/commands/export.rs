@@ -197,9 +197,11 @@ pub async fn export_document(
     match format.as_str() {
         "docx" => { cmd.arg("--to=docx"); }
         "pdf" => {
-            // Prefer xelatex for CJK; if not installed, Pandoc will error with clear message
             cmd.arg("--to=pdf");
-            cmd.arg("--pdf-engine=xelatex");
+            // Use xelatex if available (for CJK); fall back to default otherwise
+            if which::which("xelatex").is_ok() {
+                cmd.arg("--pdf-engine=xelatex");
+            }
         }
         "html" => {
             cmd.arg("--to=html5");
