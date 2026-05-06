@@ -15,7 +15,7 @@
 | Linux | `ResearchMate_*.AppImage` | 推荐：`chmod +x` 后直接运行 |
 | Linux | `ResearchMate_*.deb` | Debian/Ubuntu |
 | Linux | `ResearchMate-*.rpm` | Fedora/RHEL |
-| Windows | `researchmate.exe` | 需要 WebView2（Win10+ 自带） |
+| Windows | `ResearchMate_*_windows.zip` | 解压后双击 researchmate.exe |
 
 ## 功能
 
