@@ -1,161 +1,127 @@
 # ResearchMate
 
-研究生专属桌面端 AI 科研伙伴——以"师兄/师姐"的定位，覆盖论文写作、文献管理、版本控制和导出发布的全流程。
+研究生桌面端 AI 科研伙伴——覆盖写作、文献、版本控制、导出全流程。
 
-> AI 定位是**经验丰富的师兄/师姐**——给出建议、解释原因、推动思考，人永远是作者和决策者。
+> AI 定位是"师兄/师姐"：给建议、讲原因，人永远是作者。
 >
 > 基于 [DeepSeek](https://deepseek.com) 大语言模型构建。
 
+## 下载
+
+[Releases](https://github.com/cannotgetaname/researchmate/releases)
+
+| 平台 | 文件 | 说明 |
+|---|---|---|
+| Linux | `ResearchMate_*.AppImage` | 推荐：`chmod +x` 后直接运行 |
+| Linux | `ResearchMate_*.deb` | Debian/Ubuntu |
+| Linux | `ResearchMate-*.rpm` | Fedora/RHEL |
+| Windows | `researchmate.exe` | 需要 WebView2（Win10+ 自带） |
+
 ## 功能
 
-### 写作
-- **Monaco Editor** — VS Code 内核的 Markdown 编辑器，专注模式，无干扰
-- **流式 AI 润色** — DeepSeek 逐字流式输出，语法 / 学术风 / 精简风格
-- **划词菜单** — 右键选中文字：润色、解释、续写、引用检查
-- **实时 A4 预览** — Pandoc 渲染 HTML + 分页 CSS，侧边实时更新
+**写作**
+- Monaco Editor（VS Code 内核），Markdown 编辑
+- 流式 AI 润色：语法 / 学术风 / 精简风格，DeepSeek V4 思考模式逐字输出
+- 划词右键菜单：润色、解释、续写、引用检查
+- 实时 A4 分页预览（Pandoc 渲染）
 
-### 文献与知识库
-- **PDF 上传** — 三种解析引擎：Rust 内置 / pymupdf（推荐）/ OpenDataLoader
-- **语义检索** — 嵌入向量 + 余弦相似度，支持按期刊/领域/作者/方法过滤
-- **AI 问答** — RAG 检索增强生成，自动引用文献来源
-- **工具调用（Agent）** — LLM 自主调用 search_knowledge 工具，支持 count/list/single/compare 策略
-- **知识库管理** — 创建/删除知识库，按 KB 隔离文献，会话级 KB 选择
-- **引用检查** — 选中段落 → 查知识库 → 推荐文献，正文波浪线标记
+**文献与知识库**
+- PDF 上传，三种解析引擎：Rust 内置 / pymupdf（推荐，中文更好）/ OpenDataLoader
+- 语义检索 + RAG 问答，支持按期刊/领域/作者/方法过滤
+- AI Agent 工具调用：LLM 自主查知识库，count/list/single/compare 策略
+- 引用检查：选中段落 → 推荐文献卡片 → 一键插入正文波浪线标记
+- 知识库管理：创建/删除 KB，会话级 KB 隔离
 
-### 版本控制（Git）
-- **快照保存** — 一键保存当前草稿为版本，支持备注说明
-- **分支管理** — 创建/切换/删除分支，不同方向独立管理
-- **历史回溯** — 查看任意历史版本，一键恢复
-- **版本对比** — 右键两个版本做行级 diff
-- **标签标记** — 给版本打标签（初稿/投稿版/终版）
-- **自动快照** — 5 分钟自动保存，防止意外丢失
+**版本控制（Git）**
+- 快照保存（带备注）、分支管理、历史回溯、行级 diff、版本标签
+- 5 分钟自动快照，历史版本一键导出
 
-### 导出
-- **DOCX / PDF 导出** — Pandoc 引擎，支持自定义保存路径
-- **Pandoc 自动下载** — 首次使用自动从 GitHub/ghproxy 下载，无需手动配置
-- **参考模板** — 基础模板一键生成 + 高级模板（python-docx）可调字体/字号/行距/三线表/标题编号
+**导出**
+- DOCX / PDF（Pandoc 引擎，首次运行自动下载）
+- 参考模板：基础一键生成 + 高级模板（python-docx，可调字体/字号/三线表/标题编号）
 
-### 体验
-- **会话管理** — 多会话 tab，独立对话历史
-- **草稿自动保存** — 3 秒防抖写入磁盘
-- **思考过程展示** — DeepSeek V4 思考模式的 reasoning_content 独立展示
-- **铅笔/编辑/完成三个阶段色标** — 时间线 pastel 色系
+**体验**
+- 多会话 tab、草稿自动保存、思考过程独立展示、三阶段色标
 
-## 技术栈
+## 开发
 
-| 层 | 选型 |
-|---|---|
-| 桌面壳 | Tauri v2 |
-| 后端 | Rust 2024 edition |
-| 前端 | React 19 + TypeScript 5.7 |
-| 编辑器 | Monaco Editor (`@monaco-editor/react`) |
-| LLM | DeepSeek API（通过 `async-openai` + `reqwest`） |
-| 数据库 | SQLite（`rusqlite` bundled） |
-| 向量嵌入 | DeepSeek / Ollama |
-| Pandoc | 3.6.4（首次运行自动下载） |
-| 版本控制 | git2（libgit2） |
-| 界面字体 | Inter + JetBrains Mono |
+### 环境
 
-## 快速开始
-
-### 环境要求
-
-- **Node.js** ≥ 18
-- **Rust** ≥ 1.85
-- **系统依赖**（Linux）：
+- Node.js ≥ 18
+- Rust ≥ 1.85
+- Linux 系统依赖：
   ```bash
-  sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+  sudo apt install libwebkit2gtk-4.1-dev build-essential libssl-dev libgtk-3-dev
   ```
 
-### 安装
+### 启动
 
 ```bash
 git clone https://github.com/cannotgetaname/researchmate.git
 cd researchmate
-
-# 安装前端依赖
 npm install
-
-# 开发模式启动
-npm run tauri dev
+npm run tauri dev          # 开发模式
 ```
 
-首次启动后在设置中填入 DeepSeek API Key。
+首次启动后在设置填入 DeepSeek API Key。
 
 ### 可选依赖
 
-| 功能 | 安装命令 | 说明 |
-|---|---|---|
-| 高级 PDF 解析（pymupdf） | `pip install pymupdf` | 中文支持更好，支持表格提取 |
-| OpenDataLoader PDF 解析 | `pip install opendataloader-pdf` + Java 11 | 结构化提取 |
-| 高级模板生成 | `pip install python-docx` | 可调字体/字号/三线表等参数 |
-| PDF 导出（xelatex） | `sudo apt install texlive-xetex texlive-lang-chinese` | 中文 PDF 需要 |
+| 功能 | 安装 |
+|---|---|
+| PDF 解析（pymupdf） | `pip install pymupdf` |
+| PDF 解析（OpenDataLoader） | `pip install opendataloader-pdf` + Java 11 |
+| 高级模板生成 | `pip install python-docx` |
+| PDF 中文导出 | `sudo apt install texlive-xetex texlive-lang-chinese` |
 
-## 构建发布
-
-### Linux
+### 构建
 
 ```bash
+# Linux
 npm run tauri build
-# 产出：src-tauri/target/release/bundle/
-```
+# 产物：src-tauri/target/release/bundle/{deb,rpm,appimage}/
 
-### Windows（从 Linux 交叉编译）
-
-```bash
-# 安装交叉编译工具链
+# Windows（从 Linux 交叉编译）
 rustup target add x86_64-pc-windows-gnu
 sudo apt install mingw-w64
-
-# 构建
 npm run tauri build -- --target x86_64-pc-windows-gnu
+# 产物：src-tauri/target/x86_64-pc-windows-gnu/release/researchmate.exe
 ```
+
+## 技术栈
+
+Tauri v2 | Rust | React 19 + TypeScript | Monaco Editor | DeepSeek API | SQLite (bundled) | Pandoc 3.6.4 | git2 | Inter + JetBrains Mono
 
 ## 项目结构
 
 ```
-researchmate/
-├── src/                          # React 前端
-│   ├── App.tsx                   # 主布局 + 路由
-│   ├── components/
-│   │   ├── EditorPanel.tsx       # Monaco 编辑器
-│   │   ├── ChatPanel.tsx         # AI 对话面板
-│   │   ├── DocumentPanel.tsx     # 文献管理
-│   │   ├── VersionPanel.tsx      # Git 版本管理
-│   │   ├── EditorToolbar.tsx     # 编辑器工具栏
-│   │   └── ...
-│   └── hooks/
-│       └── useStreamChat.ts      # 流式聊天 hook
-├── src-tauri/                    # Rust 后端
-│   ├── src/
-│   │   ├── lib.rs                # Tauri app builder
-│   │   ├── commands/
-│   │   │   ├── writing.rs        # 写作润色
-│   │   │   ├── literature.rs     # 文献检索/RAG
-│   │   │   ├── agent.rs          # 工具调用 Agent
-│   │   │   ├── export.rs         # Pandoc 导出/模板
-│   │   │   ├── version.rs        # Git 版本控制
-│   │   │   └── draft.rs          # 草稿保存
-│   │   ├── llm/                  # LLM 引擎
-│   │   ├── knowledge/            # PDF/嵌入/切片
-│   │   ├── db/                   # SQLite 持久化
-│   │   └── config.rs
-│   ├── scripts/
-│   │   └── generate_template.py  # 高级模板生成脚本
-│   └── Cargo.toml
-├── .researchmate/                # 运行时数据（自动创建）
-├── docs/superpowers/             # 设计文档
-└── package.json
+src/                    React 前端
+  App.tsx               主布局 + tab 路由
+  components/
+    EditorPanel.tsx     Monaco 编辑器 + 划词菜单
+    ChatPanel.tsx       AI 对话 + 会话管理
+    DocumentPanel.tsx   文献检索 + KB 管理 + 引用建议
+    VersionPanel.tsx    Git 版本 / 分支 / diff / 标签
+    EditorToolbar.tsx   格式工具栏 + 导出按钮
+  hooks/useStreamChat.ts 流式聊天 hook
+
+src-tauri/              Rust 后端
+  src/
+    lib.rs              Tauri 入口 + 命令注册
+    commands/
+      writing.rs        润色 / 配置 / 项目管理
+      literature.rs     文献上传 / 检索 / RAG / 引用检查
+      agent.rs          AI 工具调用 Agent
+      export.rs         Pandoc 导出 / 预览 / 模板 / 自动下载
+      version.rs        Git 快照 / 分支 / diff / 标签
+      draft.rs          草稿存取
+    llm/mod.rs          DeepSeek API 引擎
+    knowledge/          PDF 解析 / 文本切片 / 向量嵌入
+    db/                 SQLite 持久化 + 迁移
+  scripts/
+    generate_template.py python-docx 高级模板生成
 ```
-
-## 开发计划
-
-已实现：写作、文献、版本控制、导出、引用检查、会话管理
-
-开发中：
-- 📊 **数据分析** — CSV 导入 → LLM 分析思路 → Python 代码执行 → ECharts 图表
-- 📋 **项目管理** — 实验方案设计表 + 写作进度看板
 
 ## 许可
 
-MIT
+MIT © 2025 cannotgetaname
