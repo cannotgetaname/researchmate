@@ -48,7 +48,7 @@ export default function ChatPanel({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Each session has its own chat state
-  const { messages, sendMessage, sendKnowledgeQuery, isLoading, aiStage } = useStreamChat(activeSessionId);
+  const { messages, sendMessage, sendKnowledgeQuery, deleteMessage, isLoading, aiStage } = useStreamChat(activeSessionId);
 
   const stageClass = aiStage === "editing" ? "editing" : aiStage === "done" ? "done" : "thinking";
   const stageLabel = aiStage === "editing" ? "写作中" : aiStage === "done" ? "完成" : "思考中";
@@ -208,15 +208,15 @@ export default function ChatPanel({
 
       {/* Session tabs */}
       <div style={{
-        display: "flex", height: "32px", borderBottom: "1px solid var(--color-hairline)",
-        padding: "0 var(--space-xs)", gap: "2px", alignItems: "center",
+        display: "flex", height: "36px", borderBottom: "1px solid var(--color-hairline)",
+        padding: "0 var(--space-xs)", gap: "4px", alignItems: "center",
         backgroundColor: "var(--color-canvas-soft)", overflowX: "auto",
       }}>
         {sessions.map((s, i) => (
           <div key={s.id}
             onClick={() => setActiveSessionId(s.id)}
             style={{
-              padding: "0 var(--space-sm)", height: "24px", display: "flex", alignItems: "center",
+              padding: "0 var(--space-sm)", height: "28px", display: "flex", alignItems: "center",
               fontSize: "11px", fontWeight: activeSessionId === s.id ? 600 : 400,
               color: activeSessionId === s.id ? "var(--color-primary)" : "var(--color-muted)",
               cursor: "pointer", borderRadius: "var(--radius-sm)",
@@ -279,7 +279,19 @@ export default function ChatPanel({
           </div>
         )}
         {messages.map((msg) => (
-          <div key={msg.id} className={`message ${msg.role} ${msg.isStreaming ? "streaming" : ""}`}>
+          <div key={msg.id} className={`message ${msg.role} ${msg.isStreaming ? "streaming" : ""}`} style={{ position: "relative" }}>
+            {!msg.isStreaming && (
+              <span onClick={() => {
+                if (!confirm("删除这条消息？")) return;
+                deleteMessage(msg.id);
+              }}
+              style={{
+                position: "absolute", top: "2px", right: "6px",
+                color: "var(--color-muted-soft)", fontSize: "12px",
+                cursor: "pointer", opacity: 0.4, lineHeight: 1,
+              }}
+              title="删除消息">×</span>
+            )}
             {msg.isStreaming && (
               <span className={`timeline-pill ${stageClass}`}>{stageLabel}</span>
             )}

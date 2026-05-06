@@ -240,5 +240,12 @@ export function useStreamChat(sessionId: string | null) {
     [sessionId],
   );
 
-  return { messages, sendMessage, sendKnowledgeQuery, isLoading, aiStatus, aiStage };
+  const deleteMessage = useCallback(async (messageId: string) => {
+    try {
+      await invoke("delete_message", { messageId });
+      setMessages((prev) => prev.filter((m) => m.id !== messageId));
+    } catch { /* ignore */ }
+  }, []);
+
+  return { messages, setMessages, sendMessage, sendKnowledgeQuery, isLoading, aiStatus, aiStage, deleteMessage };
 }

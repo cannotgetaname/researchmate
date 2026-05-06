@@ -38,6 +38,7 @@ pub fn run() {
             commands::writing::create_session,
             commands::writing::list_sessions,
             commands::writing::save_message,
+            commands::writing::delete_message,
             commands::writing::get_messages,
             commands::writing::get_config,
             commands::writing::save_config,

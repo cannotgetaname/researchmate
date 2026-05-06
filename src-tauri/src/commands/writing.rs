@@ -114,6 +114,18 @@ pub async fn list_sessions(
     Ok(sessions)
 }
 
+/// Delete a single message by id
+#[command]
+pub async fn delete_message(
+    message_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    conn.execute("DELETE FROM message WHERE id = ?1", rusqlite::params![message_id])
+        .map_err(|e| e.to_string())?;
+    Ok("已删除".to_string())
+}
+
 /// Save a single message to the database
 #[command]
 pub async fn save_message(

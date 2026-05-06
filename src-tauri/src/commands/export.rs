@@ -271,8 +271,14 @@ pub async fn generate_template_advanced(
     output_dir: State<'_, PathBuf>,
     config: Option<serde_json::Value>,
 ) -> Result<String, String> {
-    let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("scripts").join("generate_template.py");
+    // Find the script: CWD (dev mode) → exe parent → CARGO_MANIFEST_DIR
+    let candidates = [
+        std::env::current_dir().unwrap_or_default().join("scripts/generate_template.py"),
+        std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.join("scripts/generate_template.py"))).unwrap_or_default(),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("scripts/generate_template.py"),
+    ];
+    let script = candidates.iter().find(|p| p.exists()).cloned()
+        .unwrap_or_else(|| candidates[0].clone());
     let template_path = output_dir.join("template.docx");
     let config_str = config.map(|c| c.to_string()).unwrap_or_else(|| "{}".to_string());
 
