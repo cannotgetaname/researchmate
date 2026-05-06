@@ -229,10 +229,13 @@ export default function EditorPanel({
     debounceRef.current = setTimeout(async () => {
       try {
         let html = await invoke<string>("preview_html", { content });
-        // Inject pagination CSS after <head>
         html = html.replace("</head>", PAGE_CSS + "</head>");
         setPreviewHtml(html);
-      } catch { /* ignore transient errors while typing */ }
+        setExportMsg("");
+      } catch (e) {
+        setPreviewHtml(null);
+        setExportMsg(`预览失败：${e}`);
+      }
     }, 250);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   }, [content]);

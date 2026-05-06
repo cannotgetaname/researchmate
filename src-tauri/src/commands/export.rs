@@ -4,25 +4,36 @@ use std::path::PathBuf;
 
 /// Resolve pandoc path: system PATH → local bin → auto-download
 fn pandoc_path(app_dir: &PathBuf) -> PathBuf {
-    // 1. System PATH
     let sys_name = if cfg!(target_os = "windows") { "pandoc.exe" } else { "pandoc" };
+
+    // 1. Next to the executable (for manual placement by users)
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            let next_to_exe = dir.join(sys_name);
+            if next_to_exe.exists() {
+                return next_to_exe;
+            }
+        }
+    }
+
+    // 2. System PATH
     if let Ok(p) = which::which(sys_name) {
         return p;
     }
 
-    // 2. Local .researchmate/bin/
+    // 3. Local .researchmate/bin/ (auto-download target)
     let bin_dir = app_dir.join("bin");
     let local = bin_dir.join(sys_name);
     if local.exists() {
         return local;
     }
 
-    // 3. Try downloading (best effort, returns fallback on failure)
+    // 4. Try auto-download (best effort)
     if let Ok(path) = download_pandoc(app_dir) {
         return path;
     }
 
-    // 4. Fallback to just "pandoc" (will fail with clear error later)
+    // 5. Fallback — will produce a clear "pandoc not found" error downstream
     PathBuf::from(sys_name)
 }
 

@@ -10,3 +10,4 @@ dist/
 # Pandoc binaries (huge, handled by Tauri sidecar)
 src-tauri/binaries/
 project/
+src-tauri/gen/
