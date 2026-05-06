@@ -13,6 +13,11 @@ pub struct StreamChunk {
     pub delta: String,
 }
 
+#[derive(serde::Serialize, Clone)]
+pub struct StageEvent {
+    pub stage: String,  // "thinking" | "editing"
+}
+
 /// Polish text: receive text from editor, return polished version with streaming
 #[command]
 pub async fn polish_text(
@@ -43,14 +48,18 @@ pub async fn polish_text(
     }
 
     let handle = app_handle.clone();
+    let handle2 = app_handle.clone();
 
     let result = engine
-        .chat_stream(
+        .chat_stream_thinking(
             &system_prompt,
             &[],
             &text,
             move |delta| {
                 let _ = handle.emit("polish-stream", StreamChunk { delta });
+            },
+            move |stage| {
+                let _ = handle2.emit("polish-stage", StageEvent { stage: stage.into() });
             },
         )
         .await?;

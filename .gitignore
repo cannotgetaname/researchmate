@@ -3,3 +3,7 @@ target/
 dist/
 .DS_Store
 *.log
+
+# Pandoc binaries (huge, handled by Tauri sidecar)
+src-tauri/binaries/
+project/

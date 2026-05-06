@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import TopNav from "./components/TopNav";
 import EditorPanel from "./components/EditorPanel";
 import ChatPanel from "./components/ChatPanel";
 import DocumentPanel from "./components/DocumentPanel";
+import VersionPanel from "./components/VersionPanel";
 import StatusBar from "./components/StatusBar";
 
 interface AppConfig {
@@ -24,7 +25,16 @@ interface AppConfig {
 const MODULE_LABELS: Record<string, string> = {
   writing: "写作润色", analysis: "数据分析",
   literature: "文献处理", project_mgmt: "项目管理",
+  version: "版本管理",
 };
+
+const ALL_TABS = [
+  { key: "write", label: "写作" },
+  { key: "data", label: "数据" },
+  { key: "lit", label: "文献" },
+  { key: "plan", label: "管理" },
+  { key: "version", label: "版本" },
+];
 
 const inputS: React.CSSProperties = {
   width: "100%", height: "40px",
@@ -49,6 +59,7 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [fillText, setFillText] = useState("");
+  const [citationInsert, setCitationInsert] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [projects, setProjects] = useState<ProjectInfo[]>([{ id: "default", name: "默认项目" }]);
   const [activeProject, setActiveProject] = useState("default");
@@ -70,6 +81,23 @@ export default function App() {
   const handleSelectionChange = useCallback(() => {}, []);
   const handleAddToChat = useCallback((text: string) => { setFillText(text); }, []);
   const handleFillConsumed = useCallback(() => { setFillText(""); }, []);
+
+  // Version restore: remember current content before jumping to history
+  const savedContentRef = useRef(content);
+  const viewingHistoryRef = useRef(false);
+
+  const handleRestoreVersion = useCallback((oldContent: string) => {
+    if (!viewingHistoryRef.current) {
+      savedContentRef.current = content;    // only stash on FIRST restore
+    }
+    viewingHistoryRef.current = true;
+    setContent(oldContent);
+  }, [content]);
+
+  const handleBackToLatest = useCallback(() => {
+    setContent(savedContentRef.current);
+    viewingHistoryRef.current = false;
+  }, []);
 
   const loadProjects = async () => {
     try {
@@ -135,17 +163,49 @@ export default function App() {
         onOpenSettings={handleOpenSettings} onOpenAbout={() => setShowAbout(true)}
       />
       <div className="app-main">
-        <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} />
+        <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} projectId={activeProject} skipAutoSaveRef={viewingHistoryRef} citationInsert={citationInsert} onCitationConsumed={() => setCitationInsert("")} />
         <div style={{ display: activeModule === "lit" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
           <div className="chat-tabs" style={{ display: "flex", height: "40px", borderBottom: "1px solid var(--color-hairline)", padding: "0 var(--space-sm)", gap: "var(--space-xs)" }}>
-            {[{ key: "write", label: "写作" }, { key: "data", label: "数据" }, { key: "lit", label: "文献" }, { key: "plan", label: "管理" }].map((m) => (
+            {ALL_TABS.map((m) => (
               <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
             ))}
           </div>
           <DocumentPanel projectId={activeProject} />
         </div>
-        <div style={{ display: activeModule !== "lit" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
-          <ChatPanel activeModule={activeModule} onModuleChange={setActiveModule} fillText={fillText} onFillConsumed={handleFillConsumed} />
+        <div style={{ display: activeModule === "write" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
+          <ChatPanel activeModule={activeModule} onModuleChange={setActiveModule} fillText={fillText} onFillConsumed={handleFillConsumed} projectId={activeProject} onInsertCitation={(t) => setCitationInsert(t)} />
+        </div>
+        <div style={{ display: activeModule === "data" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
+          <div className="chat-tabs" style={{ display: "flex", height: "40px", borderBottom: "1px solid var(--color-hairline)", padding: "0 var(--space-sm)", gap: "var(--space-xs)" }}>
+            {ALL_TABS.map((m) => (
+              <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
+            ))}
+          </div>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--color-muted)", fontSize: "13px", lineHeight: 1.8 }}>
+            📊 数据分析<br />
+            <span style={{ fontSize: "12px", color: "var(--color-muted-soft)" }}>CSV/Excel 导入 · 统计图表 · Python 代码执行 · 分析思路引导</span><br />
+            <span style={{ fontSize: "11px", color: "var(--color-muted-soft)" }}>（开发中）</span>
+          </div>
+        </div>
+        <div style={{ display: activeModule === "plan" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
+          <div className="chat-tabs" style={{ display: "flex", height: "40px", borderBottom: "1px solid var(--color-hairline)", padding: "0 var(--space-sm)", gap: "var(--space-xs)" }}>
+            {ALL_TABS.map((m) => (
+              <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
+            ))}
+          </div>
+          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--color-muted)", fontSize: "13px", lineHeight: 1.8 }}>
+            📋 项目管理<br />
+            <span style={{ fontSize: "12px", color: "var(--color-muted-soft)" }}>实验方案设计 · 写作进度看板 · 课题统计</span><br />
+            <span style={{ fontSize: "11px", color: "var(--color-muted-soft)" }}>（开发中）</span>
+          </div>
+        </div>
+        <div style={{ display: activeModule === "version" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
+          <div className="chat-tabs" style={{ display: "flex", height: "40px", borderBottom: "1px solid var(--color-hairline)", padding: "0 var(--space-sm)", gap: "var(--space-xs)" }}>
+            {ALL_TABS.map((m) => (
+              <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
+            ))}
+          </div>
+          <VersionPanel projectId={activeProject} onRestore={handleRestoreVersion} onBackToLatest={handleBackToLatest} />
         </div>
       </div>
       <StatusBar wordCount={wordCount} aiStatus="就绪" lastSaved="刚刚" />

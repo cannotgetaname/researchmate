@@ -157,11 +157,12 @@ pub async fn upload_document(
     Ok(doc)
 }
 
-/// Semantic search across uploaded documents
+/// Semantic search across uploaded documents, optionally filtered by knowledge base IDs
 #[command]
 pub async fn search_knowledge(
     query: String,
     project_id: String,
+    kb_ids: Option<Vec<String>>,
     db: State<'_, Arc<Database>>,
     config: State<'_, Arc<RwLock<AppConfig>>>,
 ) -> Result<Vec<SearchResult>, String> {
@@ -170,11 +171,27 @@ pub async fn search_knowledge(
 
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
 
-    let mut docs_stmt = conn.prepare(
-        format!("SELECT DISTINCT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'", DOC_COLS).as_str()
-    ).map_err(|e| e.to_string())?;
+    let mut doc_sql = format!(
+        "SELECT DISTINCT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1 AND d.status = 'ready'",
+        DOC_COLS
+    );
+    let mut doc_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.clone())];
 
-    let docs: Vec<Document> = docs_stmt.query_map(rusqlite::params![project_id], doc_from_row)
+    if let Some(ref ids) = kb_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 2)).collect();
+            doc_sql.push_str(&format!(" AND kd.kb_id IN ({})", placeholders.join(",")));
+            for id in ids {
+                doc_params.push(Box::new(id.clone()));
+            }
+        }
+    }
+
+    let mut docs_stmt = conn.prepare(doc_sql.as_str()).map_err(|e| e.to_string())?;
+    let doc_param_refs: Vec<&dyn rusqlite::types::ToSql> = doc_params.iter().map(|p| p.as_ref()).collect();
+
+    let docs: Vec<Document> = docs_stmt.query_map(doc_param_refs.as_slice(), doc_from_row)
         .map_err(|e| e.to_string())?
         .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
 
@@ -204,19 +221,99 @@ pub async fn search_knowledge(
     Ok(results)
 }
 
-/// Get all documents for a project
+/// Check a text snippet for citation suggestions — search knowledge base for similar papers
+#[command]
+pub async fn check_citations(
+    text: String,
+    project_id: String,
+    kb_ids: Option<Vec<String>>,
+    db: State<'_, Arc<Database>>,
+    config: State<'_, Arc<RwLock<AppConfig>>>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let cfg = { config.read().unwrap().clone() };
+    let query_vec = embedding::embed_text_sync(&text, &cfg)?;
+
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut sql = String::from(
+        "SELECT DISTINCT d.id, d.title, d.filename, d.authors, d.year, d.journal, d.abstract, dv.vector
+         FROM document d
+         INNER JOIN doc_vector dv ON d.id = dv.doc_id
+         INNER JOIN kb_document kd ON d.id = kd.document_id
+         INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id
+         WHERE pk.project_id = ?1 AND d.status = 'ready'"
+    );
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.clone())];
+    if let Some(ref ids) = kb_ids {
+        if !ids.is_empty() {
+            let ph: Vec<String> = ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 2)).collect();
+            sql.push_str(&format!(" AND kd.kb_id IN ({})", ph.join(",")));
+            for id in ids { params.push(Box::new(id.clone())); }
+        }
+    }
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    let mut results: Vec<serde_json::Value> = Vec::new();
+    let rows = stmt.query_map(param_refs.as_slice(), |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?,
+            row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<i32>>(4)?,
+            row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?,
+            row.get::<_, Option<String>>(7)?,
+        ))
+    }).map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let (id, title, filename, authors, year, journal, abstract_, vector_json) = row.map_err(|e| e.to_string())?;
+        let vector: Vec<f32> = serde_json::from_str(&vector_json.unwrap_or_default()).unwrap_or_default();
+        if vector.is_empty() { continue; }
+        let score = cosine_similarity(&query_vec, &vector);
+        if score > 0.3 {
+            let first_author = authors.as_deref().unwrap_or("").split(',').next().unwrap_or("").trim().to_string();
+            let key = if let Some(y) = year {
+                format!("{} {}", first_author, y)
+            } else {
+                first_author
+            };
+            results.push(serde_json::json!({
+                "document_id": id,
+                "title": title.unwrap_or(filename),
+                "key": key,
+                "relevance": score,
+                "snippet": abstract_.unwrap_or_default().chars().take(250).collect::<String>(),
+            }));
+        }
+    }
+
+    results.sort_by(|a, b| b["relevance"].as_f64().unwrap_or(0.0).partial_cmp(&a["relevance"].as_f64().unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
+    results.truncate(5);
+
+    Ok(results)
+}
+
+/// Get all documents for a project, optionally filtered by knowledge base IDs
 #[command]
 pub async fn get_documents(
     project_id: String,
-    kb_id: Option<String>,
+    kb_ids: Option<Vec<String>>,
     db: State<'_, Arc<Database>>,
 ) -> Result<Vec<Document>, String> {
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
     let mut sql = format!("SELECT DISTINCT {} FROM document d INNER JOIN kb_document kd ON d.id = kd.document_id INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id WHERE pk.project_id = ?1", DOC_COLS);
     let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id)];
-    if let Some(ref kid) = kb_id {
-        sql.push_str(" AND kd.kb_id = ?2");
-        params.push(Box::new(kid.clone()));
+    if let Some(ref ids) = kb_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 2)).collect();
+            sql.push_str(&format!(" AND kd.kb_id IN ({})", placeholders.join(",")));
+            for id in ids {
+                params.push(Box::new(id.clone()));
+            }
+        }
     }
     sql.push_str(" ORDER BY d.created_at DESC");
     let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
@@ -239,7 +336,7 @@ pub async fn ask_knowledge(
     app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     use crate::llm::LlmEngine;
-    use crate::commands::writing::StreamChunk;
+    use crate::commands::writing::{StreamChunk, StageEvent};
     use tauri::Emitter;
 
     let cfg = { config.read().unwrap().clone() };
@@ -302,15 +399,19 @@ pub async fn ask_knowledge(
     let engine = LlmEngine::new(&cfg, model);
 
     let handle = app_handle.clone();
-    let result = engine.chat_stream(&system_prompt, &[], "", move |delta| {
+    let handle2 = app_handle.clone();
+
+    let result = engine.chat_stream_thinking(&system_prompt, &[], "", move |delta| {
         let _ = handle.emit("polish-stream", StreamChunk { delta });
+    }, move |stage| {
+        let _ = handle2.emit("polish-stage", StageEvent { stage: stage.into() });
     }).await?;
 
     Ok(result)
 }
 
 /// Use LLM to parse the user question into a search strategy
-async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<SearchQuery, String> {
+pub(crate) async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<SearchQuery, String> {
     use crate::llm::LlmEngine;
 
     let model = config.model_for("literature");
@@ -361,7 +462,7 @@ async fn parse_search_intent(question: &str, config: &AppConfig) -> Result<Searc
 
 /// Two-phase search: (1) find candidate documents via metadata + doc_vector,
 /// then (2) semantic chunk search within those documents only.
-fn execute_search(
+pub(crate) fn execute_search(
     db: &Database, project_id: &str, sq: &SearchQuery,
     query_vec: Option<&Vec<f32>>,
 ) -> Result<Vec<SearchHit>, String> {
@@ -452,6 +553,43 @@ fn execute_search(
         return Ok(vec![]);
     }
 
+    struct RawHit {
+        chunk_id: String, document_id: String, title: Option<String>,
+        authors: Option<String>, journal: Option<String>, domain: Option<String>,
+        methodology: Option<String>, heading: Option<String>, role: Option<String>,
+        text: String, vector_json: String,
+    }
+
+    // ── Single-paper strategy: return ALL chunks from the top document in order ──
+    if sq.strategy == "single" && sq.doc_id.is_none() {
+        let top_doc_id = &candidate_doc_ids[0];
+        let chunk_sql = format!(
+            "SELECT c.id, c.document_id, d.title, d.authors, d.journal, d.domain, d.methodology, c.heading, c.role, c.text, c.vector
+             FROM doc_chunk c JOIN document d ON c.document_id = d.id
+             WHERE c.document_id = ?1 ORDER BY c.chunk_index ASC LIMIT 100"
+        );
+        let mut chunk_stmt = conn.prepare(&chunk_sql).map_err(|e| e.to_string())?;
+        let raw_hits: Vec<RawHit> = chunk_stmt.query_map(rusqlite::params![top_doc_id], |row| {
+            Ok(RawHit {
+                chunk_id: row.get(0)?, document_id: row.get(1)?, title: row.get(2)?,
+                authors: row.get(3)?, journal: row.get(4)?, domain: row.get(5)?,
+                methodology: row.get(6)?, heading: row.get(7)?, role: row.get(8)?,
+                text: row.get(9)?, vector_json: row.get(10)?,
+            })
+        }).map_err(|e| e.to_string())?
+        .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+        drop(chunk_stmt);
+        drop(conn);
+
+        let hits: Vec<SearchHit> = raw_hits.into_iter().map(|r| SearchHit {
+            chunk_id: r.chunk_id, document_id: r.document_id,
+            title: r.title, authors: r.authors, journal: r.journal,
+            domain: r.domain, methodology: r.methodology,
+            heading: r.heading, role: r.role, text: r.text, score: 1.0,
+        }).collect();
+        return Ok(hits);
+    }
+
     // ── Phase 2: Chunk search within candidate documents ──
     let limit = if sq.doc_id.is_some() { 50 } else { 30 };
     let placeholders: Vec<String> = candidate_doc_ids.iter().enumerate()
@@ -474,13 +612,6 @@ fn execute_search(
 
     let mut chunk_stmt = conn.prepare(&chunk_sql).map_err(|e| e.to_string())?;
     let chunk_param_refs: Vec<&dyn rusqlite::types::ToSql> = chunk_params.iter().map(|p| p.as_ref()).collect();
-
-    struct RawHit {
-        chunk_id: String, document_id: String, title: Option<String>,
-        authors: Option<String>, journal: Option<String>, domain: Option<String>,
-        methodology: Option<String>, heading: Option<String>, role: Option<String>,
-        text: String, vector_json: String,
-    }
 
     let raw_hits: Vec<RawHit> = chunk_stmt.query_map(chunk_param_refs.as_slice(), |row| {
         Ok(RawHit {
@@ -533,7 +664,7 @@ fn execute_search(
     Ok(diverse)
 }
 
-fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {
+pub(crate) fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {
     // Deduplicate document entries by title
     let mut seen_titles: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     let mut deduped_hits: Vec<&SearchHit> = Vec::new();
@@ -546,13 +677,11 @@ fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {
         }
     }
     let hits = deduped_hits;
-    if sq.doc_id.is_some() && !hits.is_empty() {
+    if (sq.doc_id.is_some() || sq.strategy == "single") && !hits.is_empty() {
         let title = hits[0].title.as_deref().unwrap_or("未知");
         let mut ctx = format!("**论文：{}**（完整内容）\n\n", title);
-        for (i, h) in hits.iter().enumerate() {
-            ctx.push_str(&format!(
-                "{}\n\n", h.text
-            ));
+        for h in hits.iter() {
+            ctx.push_str(&format!("{}\n\n", h.text));
         }
         return ctx;
     }
@@ -693,6 +822,17 @@ fn build_doc_filter_sql(project_id: &str, sq: &SearchQuery) -> (String, Vec<Box<
         sql.push_str(&format!(" AND authors LIKE ?{}", idx));
         params.push(Box::new(format!("%{}%", auth)));
     }
+
+    // Filter by selected KBs
+    if !sq.kb_ids.is_empty() {
+        let placeholders: Vec<String> = sq.kb_ids.iter().enumerate()
+            .map(|(i, _)| format!("?{}", params.len() + i + 1)).collect();
+        sql.push_str(&format!(" AND kd.kb_id IN ({})", placeholders.join(",")));
+        for kb_id in &sq.kb_ids {
+            params.push(Box::new(kb_id.clone()));
+        }
+    }
+
     (sql, params)
 }
 

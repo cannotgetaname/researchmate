@@ -115,6 +115,12 @@ impl Database {
 
             INSERT OR IGNORE INTO project (id, name, description, created_at, updated_at)
             VALUES ('default', '默认项目', '默认科研项目', datetime('now'), datetime('now'));
+
+            CREATE TABLE IF NOT EXISTS session_kb (
+                session_id  TEXT NOT NULL REFERENCES session(id) ON DELETE CASCADE,
+                kb_id       TEXT NOT NULL REFERENCES knowledge_base(id) ON DELETE CASCADE,
+                PRIMARY KEY (session_id, kb_id)
+            );
             ",
         )?;
 

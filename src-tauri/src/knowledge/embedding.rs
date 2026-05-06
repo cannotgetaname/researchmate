@@ -13,6 +13,43 @@ struct EmbedResponse {
     embeddings: Vec<Vec<f32>>,
 }
 
+/// Synchronous version of embed_text — uses minreq (pure sync, no tokio).
+/// Safe to call from non-async contexts (e.g. tool callbacks).
+pub fn embed_text_sync(text: &str, config: &AppConfig) -> Result<Vec<f32>, String> {
+    let url = match config.embedding_provider.as_str() {
+        "openai" => format!("{}/embeddings", config.embedding_base_url),
+        _ => format!("{}/api/embed", config.embedding_base_url),
+    };
+    let body = serde_json::json!({
+        "model": config.embedding_model,
+        "input": [text],
+    });
+
+    let mut request = minreq::post(&url)
+        .with_header("Content-Type", "application/json")
+        .with_body(body.to_string());
+
+    if config.embedding_provider == "openai" {
+        request = request.with_header("Authorization", format!("Bearer {}", config.deepseek_api_key));
+    }
+
+    let resp = request.send().map_err(|e| format!("Embedding 调用失败：{}", e))?;
+    let data: serde_json::Value = serde_json::from_str(resp.as_str().map_err(|e| e.to_string())?)
+        .map_err(|e| e.to_string())?;
+
+    if config.embedding_provider == "openai" {
+        let vec: Vec<f32> = data["data"][0]["embedding"]
+            .as_array().ok_or("无效响应")?
+            .iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect();
+        Ok(vec)
+    } else {
+        let vec: Vec<f32> = data["embeddings"][0]
+            .as_array().ok_or("无效响应")?
+            .iter().map(|v| v.as_f64().unwrap_or(0.0) as f32).collect();
+        Ok(vec)
+    }
+}
+
 /// Generate embedding for a single text
 pub async fn embed_text(text: &str, config: &AppConfig) -> Result<Vec<f32>, String> {
     match config.embedding_provider.as_str() {
