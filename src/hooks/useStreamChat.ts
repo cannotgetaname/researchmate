@@ -25,6 +25,7 @@ export function useStreamChat(sessionId: string | null) {
   const [aiStage, setAiStage] = useState<"thinking" | "editing" | "done" | null>(null);
   const unlistenRef = useRef<UnlistenFn[]>([]);
   const prevSessionRef = useRef<string | null>(null);
+  const savedRef = useRef(false);  // prevent duplicate saves
 
   // Load messages from DB when session changes
   useEffect(() => {
@@ -40,11 +41,26 @@ export function useStreamChat(sessionId: string | null) {
       try {
         const msgs = await invoke<{id: string; session_id: string; role: string; content: string; created_at: string}[]>("get_messages", { sessionId });
         if (!cancelled) {
-          setMessages(msgs.map((m) => ({
-            id: m.id,
-            role: m.role as "user" | "assistant" | "system",
-            content: m.content,
-          })));
+          setMessages(msgs
+            .filter((m) => m.role !== "tool")  // skip tool messages
+            .map((m) => {
+            // Parse saved reasoning from [思考]...[/思考] wrapper
+            let content = m.content;
+            let reasoning: string | undefined;
+            if (m.role === "assistant") {
+              const thinkMatch = content.match(/^\[思考\]([\s\S]*?)\[\/思考\]\n?/);
+              if (thinkMatch) {
+                reasoning = thinkMatch[1];
+                content = content.slice(thinkMatch[0].length);
+              }
+            }
+            return {
+              id: m.id,
+              role: m.role as "user" | "assistant" | "system",
+              content,
+              reasoning,
+            };
+          }));
         }
       } catch {
         if (!cancelled) setMessages([]);
@@ -55,10 +71,10 @@ export function useStreamChat(sessionId: string | null) {
   }, [sessionId]);
 
   const saveExchange = async (userMsg: ChatMessage, assistantMsg: ChatMessage) => {
-    if (!sessionId) return;
+    if (!sessionId || savedRef.current) return;
+    savedRef.current = true;
     try {
       await invoke("save_message", { sessionId, role: "user", content: userMsg.content });
-      // Save reasoning too if present
       const content = assistantMsg.reasoning
         ? `[思考]${assistantMsg.reasoning}[/思考]\n${assistantMsg.content}`
         : assistantMsg.content;
@@ -68,6 +84,7 @@ export function useStreamChat(sessionId: string | null) {
 
   const sendMessage = useCallback(
     async (text: string) => {
+      savedRef.current = false;  // allow saving for this exchange
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -145,6 +162,7 @@ export function useStreamChat(sessionId: string | null) {
 
   const sendKnowledgeQuery = useCallback(
     async (text: string, kbIds: string[], projectId: string) => {
+      savedRef.current = false;  // allow saving for this exchange
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",

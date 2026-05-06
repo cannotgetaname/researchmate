@@ -9,11 +9,13 @@ interface TopNavProps {
   onCreateProject: () => void;
   onOpenSettings: () => void;
   onOpenAbout: () => void;
+  updateAvailable?: boolean;
 }
 
 export default function TopNav({
   projects, activeProjectId, onSwitchProject,
   onCreateProject, onOpenSettings, onOpenAbout,
+  updateAvailable,
 }: TopNavProps) {
   return (
     <div className="topnav">
@@ -44,6 +46,15 @@ export default function TopNav({
         </button>
       </div>
       <div className="topnav-right">
+        {updateAvailable && (
+          <span style={{
+            fontSize: "11px", color: "var(--color-on-primary)",
+            backgroundColor: "var(--color-primary)", padding: "2px 10px",
+            borderRadius: "var(--radius-pill)", fontWeight: 600,
+          }}>
+            新版本可用
+          </span>
+        )}
         <button className="topnav-btn" onClick={onOpenSettings}>设置</button>
         <button className="topnav-btn" onClick={onOpenAbout}>关于</button>
       </div>

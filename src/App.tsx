@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { check } from "@tauri-apps/plugin-updater";
 import TopNav from "./components/TopNav";
 import EditorPanel from "./components/EditorPanel";
 import ChatPanel from "./components/ChatPanel";
@@ -61,6 +62,18 @@ export default function App() {
   const [fillText, setFillText] = useState("");
   const [citationInsert, setCitationInsert] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+
+  // Check for updates on startup
+  useEffect(() => {
+    (async () => {
+      try {
+        const update = await check();
+        if (update) setUpdateAvailable(true);
+      } catch { /* updater not configured in dev mode */ }
+    })();
+  }, []);
+
   const [projects, setProjects] = useState<ProjectInfo[]>([{ id: "default", name: "默认项目" }]);
   const [activeProject, setActiveProject] = useState("default");
   const [newProjectName, setNewProjectName] = useState("");
@@ -169,6 +182,7 @@ export default function App() {
         onSwitchProject={setActiveProject}
         onCreateProject={() => setShowNewProject(true)}
         onOpenSettings={handleOpenSettings} onOpenAbout={() => setShowAbout(true)}
+        updateAvailable={updateAvailable}
       />
       <div className="app-main">
         <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} projectId={activeProject} skipAutoSaveRef={viewingHistoryRef} citationInsert={citationInsert} onCitationConsumed={() => setCitationInsert("")} />
