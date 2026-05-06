@@ -1,147 +1,141 @@
 # ResearchMate
 
-研究生桌面端 AI 科研伙伴——覆盖写作、文献、版本控制、导出全流程。
+A desktop AI research assistant for graduate students — covering writing, literature, version control, and export across the full research cycle.
 
-> AI 定位是"师兄/师姐"：给建议、讲原因，人永远是作者。
+> AI acts as a "senior labmate": gives advice, explains reasoning, pushes your thinking. You are always the author.
 >
-> 基于 [DeepSeek](https://deepseek.com) 大语言模型构建。
+> Built on [DeepSeek](https://deepseek.com) large language models.
 
-## 下载
+## Download
 
 [Releases](https://github.com/cannotgetaname/researchmate/releases)
 
-| 平台 | 文件 | 说明 |
+| Platform | File | Notes |
 |---|---|---|
-| Linux | `ResearchMate_*.AppImage` | 推荐：`chmod +x` 后直接运行 |
+| Linux | `ResearchMate_*.AppImage` | Recommended: `chmod +x` then run |
 | Linux | `ResearchMate_*.deb` | Debian/Ubuntu |
 | Linux | `ResearchMate-*.rpm` | Fedora/RHEL |
-| Windows | `ResearchMate_*_windows.zip` | 解压后双击 researchmate.exe |
+| Windows | `ResearchMate_*_windows.zip` | Unzip, run `researchmate.exe` |
 
-## 功能
+## Features
 
-**写作**
-- Monaco Editor（VS Code 内核），Markdown 编辑
-- 流式 AI 润色：语法 / 学术风 / 精简风格，DeepSeek V4 思考模式逐字输出
-- 划词右键菜单：润色、解释、续写、引用检查
-- 实时 A4 分页预览（Pandoc 渲染）
+**Writing**
+- Monaco Editor (VS Code core) with Markdown editing
+- Streaming AI polish: grammar / academic style / concise
+- Right-click context menu: polish, explain, continue, check citations
+- Real-time A4 preview (Pandoc-rendered HTML with pagination CSS)
 
-**文献与知识库**
-- PDF 上传，三种解析引擎：Rust 内置 / pymupdf（推荐，中文更好）/ OpenDataLoader
-- 语义检索 + RAG 问答，支持按期刊/领域/作者/方法过滤
-- AI Agent 工具调用：LLM 自主查知识库，count/list/single/compare 策略
-- 引用检查：选中段落 → 推荐文献卡片 → 一键插入正文波浪线标记
-- 知识库管理：创建/删除 KB，会话级 KB 隔离
+**Literature & Knowledge Base**
+- PDF upload with 3 parsers: Rust native / pymupdf / OpenDataLoader
+- Semantic search + RAG Q&A with journal/domain/author/method filters
+- AI Agent tool calling: LLM autonomously queries KB with count/list/single/compare strategies
+- Citation check: select text → KB search → suggestion cards → insert inline
+- KB management: create/delete KBs, session-level KB isolation
 
-**版本控制（Git）**
-- 快照保存（带备注）、分支管理、历史回溯、行级 diff、版本标签
-- 5 分钟自动快照，历史版本一键导出
+**Version Control (Git)**
+- Snapshots with notes, branches, history browsing, line-level diff, tags
+- 5-minute auto-snapshot, export historical versions as DOCX
 
-**导出**
-- DOCX / PDF（Pandoc 引擎，首次运行自动下载）
-- 参考模板：基础一键生成 + 高级模板（python-docx，可调字体/字号/三线表/标题编号）
+**Export**
+- DOCX / PDF via Pandoc (auto-downloaded on first use)
+- Reference template: one-click basic generation + advanced (python-docx, customizable font/size/table style/heading numbering)
 
-**体验**
-- 多会话 tab、草稿自动保存、思考过程独立展示、三阶段色标
+**Usability**
+- Multi-session tabs, auto-save, thinking process display, 3-stage color timeline
 
-## 开发
+## Quick Start
 
-### 环境
+### Requirements
 
 - Node.js ≥ 18
 - Rust ≥ 1.85
-- Linux 系统依赖（完整列表）：
+- Linux system dependencies:
   ```bash
-  # Tauri + WebView
   sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-  # 编译工具链
-  sudo apt install build-essential cmake pkg-config
-  # SQLite / libgit2 / SSL
-  sudo apt install libssl-dev libsqlite3-dev
-  # 离线构建：先装好以上依赖，cargo fetch 后即可断网 build
+  sudo apt install build-essential cmake pkg-config libssl-dev libsqlite3-dev
   ```
 
-### 启动
+### Run
 
 ```bash
 git clone https://github.com/cannotgetaname/researchmate.git
 cd researchmate
 npm install
-npm run tauri dev          # 开发模式
+npm run tauri dev
 ```
 
-首次启动后在设置填入 DeepSeek API Key。
+Enter your DeepSeek API Key in Settings on first launch.
 
-### 可选依赖
+### Optional Dependencies
 
-| 功能 | 安装 |
+| Feature | Install |
 |---|---|
-| PDF 解析（pymupdf） | `pip install pymupdf` |
-| PDF 解析（OpenDataLoader） | `pip install opendataloader-pdf` + Java 11 |
-| 高级模板生成 | `pip install python-docx` |
-| PDF 中文导出 | `sudo apt install texlive-xetex texlive-lang-chinese` |
+| PDF parsing (pymupdf) | `pip install pymupdf` |
+| PDF parsing (OpenDataLoader) | `pip install opendataloader-pdf` + Java 11 |
+| Advanced template | `pip install python-docx` |
+| Chinese PDF export | `sudo apt install texlive-xetex texlive-lang-chinese` |
 
-### 离线构建
-
-在有网机器上先跑一次 `npm install && cargo fetch`，之后用 `--offline` 参数：
-
-```bash
-# 第一次（有网）
-npm install
-cd src-tauri && cargo fetch && cd ..
-npm run tauri build
-
-# 之后离线构建
-npm run tauri build -- --offline
-```
-
-### 构建
+### Build
 
 ```bash
 # Linux
 npm run tauri build
-# 产物：src-tauri/target/release/bundle/{deb,rpm,appimage}/
+# Output: src-tauri/target/release/bundle/{deb,rpm,appimage}/
 
-# Windows（从 Linux 交叉编译）
+# Windows (cross-compile from Linux)
 rustup target add x86_64-pc-windows-gnu
 sudo apt install mingw-w64
 npm run tauri build -- --target x86_64-pc-windows-gnu
-# 产物：src-tauri/target/x86_64-pc-windows-gnu/release/researchmate.exe
 ```
 
-## 技术栈
+### Offline Build
+
+Pre-fetch dependencies on a machine with internet, then build offline:
+
+```bash
+# First time (with network)
+npm install
+cd src-tauri && cargo fetch && cd ..
+npm run tauri build
+
+# Subsequent offline builds
+npm run tauri build
+```
+
+## Tech Stack
 
 Tauri v2 | Rust | React 19 + TypeScript | Monaco Editor | DeepSeek API | SQLite (bundled) | Pandoc 3.6.4 | git2 | Inter + JetBrains Mono
 
-## 项目结构
+## Project Structure
 
 ```
-src/                    React 前端
-  App.tsx               主布局 + tab 路由
+src/                    React frontend
+  App.tsx               Main layout + tab routing
   components/
-    EditorPanel.tsx     Monaco 编辑器 + 划词菜单
-    ChatPanel.tsx       AI 对话 + 会话管理
-    DocumentPanel.tsx   文献检索 + KB 管理 + 引用建议
-    VersionPanel.tsx    Git 版本 / 分支 / diff / 标签
-    EditorToolbar.tsx   格式工具栏 + 导出按钮
-  hooks/useStreamChat.ts 流式聊天 hook
+    EditorPanel.tsx     Monaco editor + context menu
+    ChatPanel.tsx       AI chat + session management
+    DocumentPanel.tsx   Literature search + KB management + citation suggestions
+    VersionPanel.tsx    Git versions / branches / diff / tags
+    EditorToolbar.tsx   Format toolbar + export controls
+  hooks/useStreamChat.ts Streaming chat hook
 
-src-tauri/              Rust 后端
+src-tauri/              Rust backend
   src/
-    lib.rs              Tauri 入口 + 命令注册
+    lib.rs              Tauri entry + command registration
     commands/
-      writing.rs        润色 / 配置 / 项目管理
-      literature.rs     文献上传 / 检索 / RAG / 引用检查
-      agent.rs          AI 工具调用 Agent
-      export.rs         Pandoc 导出 / 预览 / 模板 / 自动下载
-      version.rs        Git 快照 / 分支 / diff / 标签
-      draft.rs          草稿存取
-    llm/mod.rs          DeepSeek API 引擎
-    knowledge/          PDF 解析 / 文本切片 / 向量嵌入
-    db/                 SQLite 持久化 + 迁移
+      writing.rs        Polish / config / project management
+      literature.rs     Upload / search / RAG / citation check
+      agent.rs          AI Agent tool calling
+      export.rs         Pandoc export / preview / template / auto-download
+      version.rs        Git snapshots / branches / diff / tags
+      draft.rs          Draft persistence
+    llm/mod.rs          DeepSeek API engine
+    knowledge/          PDF parsing / text chunking / vector embeddings / BM25
+    db/                 SQLite persistence + migrations
   scripts/
-    generate_template.py python-docx 高级模板生成
+    generate_template.py Advanced template generator (requires python-docx)
 ```
 
-## 许可
+## License
 
-MIT © 2026 cannotgetaname
+MIT © 2025 cannotgetaname
