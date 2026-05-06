@@ -77,13 +77,7 @@ export default function VersionPanel({ projectId, onRestore, onBackToLatest }: V
     });
   }, [projectId]);
 
-  // Auto-snapshot every 5 minutes
-  useEffect(() => {
-    const interval = setInterval(() => {
-      invoke("auto_snapshot", { projectId }).then(() => loadVersions());
-    }, 300_000); // 5 min
-    return () => clearInterval(interval);
-  }, [projectId]);
+
 
   const handleSaveVersion = async () => {
     if (!msg.trim()) return;

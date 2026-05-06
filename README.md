@@ -49,9 +49,15 @@
 
 - Node.js ≥ 18
 - Rust ≥ 1.85
-- Linux 系统依赖：
+- Linux 系统依赖（完整列表）：
   ```bash
-  sudo apt install libwebkit2gtk-4.1-dev build-essential libssl-dev libgtk-3-dev
+  # Tauri + WebView
+  sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+  # 编译工具链
+  sudo apt install build-essential cmake pkg-config
+  # SQLite / libgit2 / SSL
+  sudo apt install libssl-dev libsqlite3-dev
+  # 离线构建：先装好以上依赖，cargo fetch 后即可断网 build
   ```
 
 ### 启动
@@ -73,6 +79,20 @@ npm run tauri dev          # 开发模式
 | PDF 解析（OpenDataLoader） | `pip install opendataloader-pdf` + Java 11 |
 | 高级模板生成 | `pip install python-docx` |
 | PDF 中文导出 | `sudo apt install texlive-xetex texlive-lang-chinese` |
+
+### 离线构建
+
+在有网机器上先跑一次 `npm install && cargo fetch`，之后用 `--offline` 参数：
+
+```bash
+# 第一次（有网）
+npm install
+cd src-tauri && cargo fetch && cd ..
+npm run tauri build
+
+# 之后离线构建
+npm run tauri build -- --offline
+```
 
 ### 构建
 
@@ -124,4 +144,4 @@ src-tauri/              Rust 后端
 
 ## 许可
 
-MIT © 2025 cannotgetaname
+MIT © 2026 cannotgetaname

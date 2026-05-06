@@ -48,7 +48,7 @@ export default function ChatPanel({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Each session has its own chat state
-  const { messages, sendMessage, sendKnowledgeQuery, isLoading, aiStage } = useStreamChat();
+  const { messages, sendMessage, sendKnowledgeQuery, isLoading, aiStage } = useStreamChat(activeSessionId);
 
   const stageClass = aiStage === "editing" ? "editing" : aiStage === "done" ? "done" : "thinking";
   const stageLabel = aiStage === "editing" ? "写作中" : aiStage === "done" ? "完成" : "思考中";
@@ -64,14 +64,23 @@ export default function ChatPanel({
 
   // Load sessions for this project+module
   const loadSessions = useCallback(async () => {
-    if (sessions.length === 0) {
-      try {
+    try {
+      const list = await invoke<Session[]>("list_sessions", { projectId, module: activeModule });
+      if (list.length === 0) {
+        // No sessions yet, create a default one
         const s = await invoke<Session>("create_session", { projectId, module: activeModule });
         setSessions([s]);
         setActiveSessionId(s.id);
-      } catch {}
-    }
-  }, [projectId, activeModule, sessions.length]);
+      } else {
+        setSessions(list);
+        // Keep current session if still valid, otherwise select first
+        setActiveSessionId((prev) => {
+          if (prev && list.some((s) => s.id === prev)) return prev;
+          return list[0].id;
+        });
+      }
+    } catch {}
+  }, [projectId, activeModule]);
 
   useEffect(() => { loadSessions(); }, [projectId, activeModule]);
 
@@ -168,9 +177,9 @@ export default function ChatPanel({
     if (!trimmed || isLoading) return;
     // Route: if KBs are selected, use tool-calling agent; otherwise stream polish
     if (selectedKbIds.length > 0) {
-      sendKnowledgeQuery(trimmed, activeSessionId, selectedKbIds, projectId);
+      sendKnowledgeQuery(trimmed, selectedKbIds, projectId);
     } else {
-      sendMessage(trimmed, activeSessionId);
+      sendMessage(trimmed);
     }
     setInput("");
   };

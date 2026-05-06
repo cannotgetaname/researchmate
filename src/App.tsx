@@ -99,6 +99,14 @@ export default function App() {
     viewingHistoryRef.current = false;
   }, []);
 
+  // Auto-snapshot every 5 minutes (global, not just in version tab)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      invoke("auto_snapshot", { projectId: activeProject }).catch(() => {});
+    }, 300_000); // 5 min
+    return () => clearInterval(interval);
+  }, [activeProject]);
+
   const loadProjects = async () => {
     try {
       const list = await invoke("list_projects") as ProjectInfo[];
@@ -252,7 +260,9 @@ export default function App() {
             <SectionHeader>向量嵌入</SectionHeader>
             <Field label="提供方" mt={false}>
               <select value={embProvider} onChange={(e) => setEmbProvider(e.target.value)} style={selectS}>
-                {(cfg?.embedding_providers ?? ["ollama", "openai"]).map((p) => <option key={p} value={p}>{p === "ollama" ? "Ollama（本地）" : "OpenAI 兼容 API"}</option>)}
+                {(cfg?.embedding_providers ?? ["bm25", "ollama", "openai"]).map((p) => <option key={p} value={p}>{
+  p === "bm25" ? "BM25（内置，零配置）" :
+  p === "ollama" ? "Ollama（本地）" : "OpenAI 兼容 API"}</option>)}
               </select>
             </Field>
             <Field label="模型"><input type="text" value={embModel} onChange={(e) => setEmbModel(e.target.value)} style={inputS} /></Field>

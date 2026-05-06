@@ -23,6 +23,14 @@
       "csp": null
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDk2RTBEQjMyRTkzRjc2RDMKUldUVGRqL3BNdHZnbHJCbUZoUjJDQTdoc3Jta1B5cXpVMEViNW1wR0Zrdk5mZWJFQkFYdTlKakcK",
+      "endpoints": [
+        "https://github.com/cannotgetaname/researchmate/releases/latest/download/latest.json"
+      ]
+    }
+  },
   "bundle": {
     "active": true,
     "targets": "all",

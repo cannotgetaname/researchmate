@@ -181,7 +181,7 @@ export default function EditorPanel({
     (async () => {
       try {
         const draft = await invoke<string>("load_draft", { projectId });
-        if (draft) onChange(draft);
+        onChange(draft || "");  // always update, even if empty
       } catch { /* ignore */ }
     })();
   }, [projectId]);
@@ -190,12 +190,19 @@ export default function EditorPanel({
   useEffect(() => {
     if (skipAutoSaveRef?.current) return;
     if (saveRef.current) clearTimeout(saveRef.current);
+    const currentPid = projectId;
     saveRef.current = setTimeout(async () => {
       try {
-        await invoke("save_draft", { projectId, content: contentRef.current });
+        await invoke("save_draft", { projectId: currentPid, content: contentRef.current });
       } catch { /* ignore */ }
     }, 3000);
-    return () => { if (saveRef.current) clearTimeout(saveRef.current); };
+    return () => {
+      if (saveRef.current) clearTimeout(saveRef.current);
+      // Force-save on project switch
+      if (contentRef.current) {
+        invoke("save_draft", { projectId: currentPid, content: contentRef.current }).catch(() => {});
+      }
+    };
   }, [content, projectId, skipAutoSaveRef]);
 
   // ── Preview (auto-refresh on content change, debounced) ──

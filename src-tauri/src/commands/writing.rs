@@ -90,6 +90,48 @@ pub async fn create_session(
     Ok(session)
 }
 
+/// List sessions for a project + module
+#[command]
+pub async fn list_sessions(
+    project_id: String,
+    module: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<Vec<Session>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, project_id, module, title, created_at FROM session WHERE project_id = ?1 AND module = ?2 ORDER BY created_at ASC"
+    ).map_err(|e| e.to_string())?;
+    let sessions = stmt.query_map(rusqlite::params![project_id, module], |row| {
+        Ok(Session {
+            id: row.get(0)?,
+            project_id: row.get(1)?,
+            module: row.get(2)?,
+            title: row.get(3)?,
+            created_at: row.get(4)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+    Ok(sessions)
+}
+
+/// Save a single message to the database
+#[command]
+pub async fn save_message(
+    session_id: String,
+    role: String,
+    content: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<String, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let id = uuid::Uuid::new_v4().to_string();
+    let created_at = chrono::Utc::now().to_rfc3339();
+    conn.execute(
+        "INSERT INTO message (id, session_id, role, content, created_at) VALUES (?1,?2,?3,?4,?5)",
+        rusqlite::params![id, session_id, role, content, created_at],
+    ).map_err(|e| e.to_string())?;
+    Ok(id)
+}
+
 /// Get current config (masked API key)
 #[command]
 pub async fn get_config(

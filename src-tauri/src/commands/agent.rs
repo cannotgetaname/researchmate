@@ -34,55 +34,67 @@ pub async fn chat_with_tools(
     let model = cfg.model_for("literature").to_string();
     let engine = LlmEngine::new(&cfg, &model);
 
-    let system_prompt = r#"你是一个学术研究助手。你可以使用 search_knowledge 工具搜索用户知识库中的文献。
+    let system_prompt = r#"你是一个学术研究助手，可以使用以下工具：
 
-策略说明：
-- count: 统计文献数量，工具直接返回计数，拿到后直接回答，不要再次搜索
-- list: 列出文献，工具返回列表，拿到后直接展示
-- single: 查询单篇论文的详细内容，工具返回**完整全文**，仔细阅读后直接回答用户问题，不要重复搜索
-- semantic: 语义搜索，返回最相关片段，用于需要查找特定信息的场景
+**search_knowledge** — 搜索知识库文献。策略选择：
+- 用户问"有几篇/多少" → strategy=count
+- 用户问"有哪些/列出" → strategy=list
+- 用户问某篇论文的具体内容 → strategy=single（返回全文，仔细阅读后直接回答）
+- 用户问对比多篇 → strategy=compare
+- 通用搜索 → strategy=semantic
 
-重要规则：
-1. 工具返回的文献片段就是你可用的全部信息来源，不要编造
-2. 当 single 策略返回完整论文后，不要再调用其他工具
+**review_text** — 审阅用户提供的文本。自动判断审阅维度（逻辑/方法/表述/引用/全面）。
+
+**summarize_text** — 总结用户提供的文本。风格选择：简短/详细/要点列表。
+
+核心规则：
+1. 工具返回的文献片段就是全部信息来源，不要编造
+2. single 策略返回完整论文后，直接回答，不要再搜索
 3. 引用文献时标注**【文献标题】**
-4. 回答尽量结构化"#;
+4. 回答尽量结构化，审阅意见分点列出"#;
 
-    let tools: Vec<(String, String, serde_json::Value)> = vec![(
-        "search_knowledge".into(),
-        "搜索知识库中的文献，返回匹配的文献片段。支持按主题、期刊、领域、作者、方法过滤。支持计数、列表、语义、单篇详查、对比等策略。".into(),
-        serde_json::json!({
-            "type": "object",
-            "properties": {
-                "query": {
-                    "type": "string",
-                    "description": "搜索查询，自然语言描述"
+    let tools: Vec<(String, String, serde_json::Value)> = vec![
+        (
+            "search_knowledge".into(),
+            "搜索知识库中的文献，返回匹配的文献片段。支持按主题、期刊、领域、作者、方法过滤。支持计数、列表、语义、单篇详查、对比等策略。当用户询问文献相关问题、需要查找论文、统计数量、对比文献时使用。".into(),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "搜索查询，自然语言描述"},
+                    "strategy": {"type": "string", "enum": ["semantic", "count", "list", "single", "compare"], "description": "检索策略"},
+                    "journal": {"type": "string", "description": "按期刊过滤"},
+                    "domain": {"type": "string", "description": "按领域过滤"},
+                    "author": {"type": "string", "description": "按作者过滤"},
+                    "methodology": {"type": "string", "description": "按方法过滤"}
                 },
-                "strategy": {
-                    "type": "string",
-                    "enum": ["semantic", "count", "list", "single", "compare"],
-                    "description": "检索策略: count=计数, list=列出文献, single=单篇详查, compare=多篇对比, semantic=语义搜索(默认)"
+                "required": ["query"]
+            }),
+        ),
+        (
+            "review_text".into(),
+            "对用户提供的文本进行学术审阅，指出论证逻辑问题、方法缺陷、表述不清晰之处、遗漏引用等。返回结构化审阅意见。当用户要求审阅、批判、评价一段文字时使用。".into(),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "需要审阅的文本内容"},
+                    "aspect": {"type": "string", "enum": ["logic", "method", "clarity", "citation", "all"], "description": "审阅维度: logic=逻辑, method=方法, clarity=表述, citation=引用, all=全面"}
                 },
-                "journal": {
-                    "type": "string",
-                    "description": "按期刊/会议名过滤，如'Nature'、'CVPR'、'IEEE TPAMI'"
+                "required": ["text"]
+            }),
+        ),
+        (
+            "summarize_text".into(),
+            "对用户提供的长文本进行精炼总结，提取核心观点、方法、结论。当用户要求总结、概括、提取要点时使用。".into(),
+            serde_json::json!({
+                "type": "object",
+                "properties": {
+                    "text": {"type": "string", "description": "需要总结的文本"},
+                    "style": {"type": "string", "enum": ["brief", "detailed", "bullet"], "description": "总结风格: brief=简短, detailed=详细, bullet=要点列表"}
                 },
-                "domain": {
-                    "type": "string",
-                    "description": "按研究领域过滤，如'计算机视觉'、'强化学习'"
-                },
-                "author": {
-                    "type": "string",
-                    "description": "按作者名过滤"
-                },
-                "methodology": {
-                    "type": "string",
-                    "description": "按方法/技术过滤，如'Transformer'、'深度学习'"
-                }
-            },
-            "required": ["query"]
-        }),
-    )];
+                "required": ["text"]
+            }),
+        ),
+    ];
 
     let db_clone = db.inner().clone();
     let kb_ids_clone = kb_ids.clone();
@@ -107,6 +119,16 @@ pub async fn chat_with_tools(
 
                 let r = if name == "search_knowledge" {
                     execute_kb_search(&db_clone, &project_id, &args, &kb_ids_clone, &cfg)
+                } else if name == "review_text" {
+                    let text = args["text"].as_str().unwrap_or("");
+                    if text.is_empty() { Err("文本不能为空".into()) }
+                    else { Ok(format!("文本已收到（{}字）。请在下一轮回答中对文本进行全面学术审阅，指出论证逻辑、方法、表述、引用等方面的问题。", text.chars().count())) }
+                } else if name == "summarize_text" {
+                    let text = args["text"].as_str().unwrap_or("");
+                    let style = args["style"].as_str().unwrap_or("brief");
+                    if text.is_empty() { Err("文本不能为空".into()) }
+                    else { Ok(format!("文本已收到（{}字）。请在下一轮回答中给出{}总结。", text.chars().count(),
+                        match style { "detailed" => "详细", "bullet" => "要点列表式", _ => "简短" })) }
                 } else {
                     Err(format!("未知工具: {}", name))
                 };

@@ -8,11 +8,19 @@ use db::Database;
 use std::sync::{Arc, RwLock};
 
 pub fn run() {
-    // Use project root (parent of src-tauri/) in dev, next to exe in release
-    let app_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join(".researchmate");
+    let app_dir = if cfg!(target_os = "windows") {
+        // Windows: portable mode — data next to the exe
+        std::env::current_exe()
+            .ok()
+            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".researchmate")
+    } else {
+        // Linux/macOS: standard home directory
+        dirs::home_dir()
+            .unwrap_or_else(|| std::path::PathBuf::from("."))
+            .join(".researchmate")
+    };
 
     let database = Database::new(&app_dir).expect("failed to initialize database");
     let db = Arc::new(database);
@@ -21,12 +29,15 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(db)
         .manage(cfg)
         .manage(app_dir)
         .invoke_handler(tauri::generate_handler![
             commands::writing::polish_text,
             commands::writing::create_session,
+            commands::writing::list_sessions,
+            commands::writing::save_message,
             commands::writing::get_messages,
             commands::writing::get_config,
             commands::writing::save_config,

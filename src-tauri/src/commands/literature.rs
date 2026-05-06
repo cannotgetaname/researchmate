@@ -6,6 +6,8 @@ use crate::db::Database;
 use crate::db::models::Document;
 use crate::config::AppConfig;
 use crate::knowledge::{pdf, embedding, chunker};
+use std::collections::HashMap;
+
 use crate::db::models::{SearchQuery, SearchHit};
 
 #[derive(serde::Serialize)]
@@ -30,12 +32,12 @@ pub async fn upload_document(
         .unwrap_or_else(|| "unknown.pdf".to_string());
     let doc_id = uuid::Uuid::new_v4().to_string();
 
-    // Copy to data dir (project root = parent of src-tauri/)
-    let data_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join(".researchmate")
-        .join("projects")
+    // Copy to data dir
+    let data_dir = if cfg!(target_os = "windows") {
+        std::env::current_exe().ok().and_then(|p| p.parent().map(|d| d.to_path_buf())).unwrap_or_else(|| PathBuf::from("."))
+    } else {
+        dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+    }.join(".researchmate").join("projects")
         .join(&project_id)
         .join("files");
     std::fs::create_dir_all(&data_dir).map_err(|e| e.to_string())?;
@@ -222,7 +224,7 @@ pub async fn search_knowledge(
     Ok(results)
 }
 
-/// Check a text snippet for citation suggestions — search knowledge base for similar papers
+/// Check a text snippet for citation suggestions — search doc-level + chunk-level vectors
 #[command]
 pub async fn check_citations(
     text: String,
@@ -235,7 +237,9 @@ pub async fn check_citations(
     let query_vec = embedding::embed_text_sync(&text, &cfg)?;
 
     let conn = db.conn.lock().map_err(|e| e.to_string())?;
-    let mut sql = String::from(
+
+    // Phase 1: doc-level similarity
+    let mut doc_sql = String::from(
         "SELECT DISTINCT d.id, d.title, d.filename, d.authors, d.year, d.journal, d.abstract, dv.vector
          FROM document d
          INNER JOIN doc_vector dv ON d.id = dv.doc_id
@@ -243,53 +247,121 @@ pub async fn check_citations(
          INNER JOIN project_kb pk ON kd.kb_id = pk.kb_id
          WHERE pk.project_id = ?1 AND d.status = 'ready'"
     );
-    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.clone())];
+    let mut doc_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.clone())];
     if let Some(ref ids) = kb_ids {
         if !ids.is_empty() {
             let ph: Vec<String> = ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 2)).collect();
-            sql.push_str(&format!(" AND kd.kb_id IN ({})", ph.join(",")));
-            for id in ids { params.push(Box::new(id.clone())); }
+            doc_sql.push_str(&format!(" AND kd.kb_id IN ({})", ph.join(",")));
+            for id in ids { doc_params.push(Box::new(id.clone())); }
         }
     }
-    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
-    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+    let doc_param_refs: Vec<&dyn rusqlite::types::ToSql> = doc_params.iter().map(|p| p.as_ref()).collect();
+    let mut doc_stmt = conn.prepare(&doc_sql).map_err(|e| e.to_string())?;
 
-    let mut results: Vec<serde_json::Value> = Vec::new();
-    let rows = stmt.query_map(param_refs.as_slice(), |row| {
+    // Collect per-document best scores
+    let mut doc_scores: HashMap<String, (f32, serde_json::Value)> = HashMap::new();
+    let rows = doc_stmt.query_map(doc_param_refs.as_slice(), |row| {
         Ok((
-            row.get::<_, String>(0)?,
-            row.get::<_, Option<String>>(1)?,
-            row.get::<_, String>(2)?,
-            row.get::<_, Option<String>>(3)?,
-            row.get::<_, Option<i32>>(4)?,
-            row.get::<_, Option<String>>(5)?,
-            row.get::<_, Option<String>>(6)?,
-            row.get::<_, Option<String>>(7)?,
+            row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?, row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<i32>>(4)?, row.get::<_, Option<String>>(5)?,
+            row.get::<_, Option<String>>(6)?, row.get::<_, Option<String>>(7)?,
         ))
     }).map_err(|e| e.to_string())?;
 
     for row in rows {
-        let (id, title, filename, authors, year, journal, abstract_, vector_json) = row.map_err(|e| e.to_string())?;
+        let (id, title, filename, authors, year, _journal, abstract_, vector_json) = row.map_err(|e| e.to_string())?;
         let vector: Vec<f32> = serde_json::from_str(&vector_json.unwrap_or_default()).unwrap_or_default();
         if vector.is_empty() { continue; }
         let score = cosine_similarity(&query_vec, &vector);
-        if score > 0.3 {
+        if score > 0.15 {
             let first_author = authors.as_deref().unwrap_or("").split(',').next().unwrap_or("").trim().to_string();
             let key = if let Some(y) = year {
                 format!("{} {}", first_author, y)
             } else {
                 first_author
             };
-            results.push(serde_json::json!({
+            let entry = serde_json::json!({
                 "document_id": id,
-                "title": title.unwrap_or(filename),
+                "title": title.unwrap_or_else(|| filename.clone()),
                 "key": key,
                 "relevance": score,
                 "snippet": abstract_.unwrap_or_default().chars().take(250).collect::<String>(),
-            }));
+                "matched_text": filename,
+            });
+            doc_scores.insert(id, (score, entry));
         }
     }
+    drop(doc_stmt);
 
+    // Phase 2: chunk-level similarity for higher precision
+    let mut chunk_sql = String::from(
+        "SELECT c.document_id, d.title, d.filename, d.authors, d.year, d.journal, c.text, c.vector
+         FROM doc_chunk c JOIN document d ON c.document_id = d.id
+         JOIN kb_document kd ON d.id = kd.document_id
+         JOIN project_kb pk ON kd.kb_id = pk.kb_id
+         WHERE pk.project_id = ?1 AND d.status = 'ready'"
+    );
+    let mut chunk_params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.clone())];
+    if let Some(ref ids) = kb_ids {
+        if !ids.is_empty() {
+            let ph: Vec<String> = ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 2)).collect();
+            chunk_sql.push_str(&format!(" AND kd.kb_id IN ({})", ph.join(",")));
+            for id in ids { chunk_params.push(Box::new(id.clone())); }
+        }
+    }
+    chunk_sql.push_str(" LIMIT 200");
+    let mut chunk_stmt = conn.prepare(&chunk_sql).map_err(|e| e.to_string())?;
+    let chunk_param_refs: Vec<&dyn rusqlite::types::ToSql> = chunk_params.iter().map(|p| p.as_ref()).collect();
+
+    let rows = chunk_stmt.query_map(chunk_param_refs.as_slice(), |row| {
+        Ok((
+            row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?,
+            row.get::<_, String>(2)?, row.get::<_, Option<String>>(3)?,
+            row.get::<_, Option<i32>>(4)?, row.get::<_, Option<String>>(5)?,
+            row.get::<_, String>(6)?, row.get::<_, Option<String>>(7)?,
+        ))
+    }).map_err(|e| e.to_string())?;
+
+    for row in rows {
+        let (doc_id, title, filename, authors, year, _journal, chunk_text, vector_json) = row.map_err(|e| e.to_string())?;
+        let vector: Vec<f32> = serde_json::from_str(&vector_json.unwrap_or_default()).unwrap_or_default();
+        if vector.is_empty() { continue; }
+        let score = cosine_similarity(&query_vec, &vector);
+        if score > 0.2 {
+            let first_author = authors.as_deref().unwrap_or("").split(',').next().unwrap_or("").trim().to_string();
+            let key = if let Some(y) = year {
+                format!("{} {}", first_author, y)
+            } else {
+                first_author
+            };
+            // Update or insert: use the higher score between doc-level and chunk-level
+            let entry = serde_json::json!({
+                "document_id": doc_id,
+                "title": title.unwrap_or_else(|| filename.clone()),
+                "key": key,
+                "relevance": score,
+                "snippet": chunk_text.chars().take(300).collect::<String>(),
+                "matched_text": chunk_text.chars().take(200).collect::<String>(),
+            });
+            match doc_scores.get(&doc_id) {
+                Some((existing_score, _)) if score > *existing_score => {
+                    doc_scores.insert(doc_id.clone(), (score, entry));
+                }
+                None => {
+                    doc_scores.insert(doc_id.clone(), (score, entry));
+                }
+                _ => {}
+            }
+        }
+    }
+    drop(chunk_stmt);
+    drop(conn);
+
+    // Sort and truncate
+    let mut results: Vec<serde_json::Value> = doc_scores.into_values()
+        .map(|(_, entry)| entry)
+        .collect();
     results.sort_by(|a, b| b["relevance"].as_f64().unwrap_or(0.0).partial_cmp(&a["relevance"].as_f64().unwrap_or(0.0)).unwrap_or(std::cmp::Ordering::Equal));
     results.truncate(5);
 
@@ -361,14 +433,16 @@ pub async fn ask_knowledge(
         _ => {} // semantic / single / compare — use two-phase search
     }
 
-    let query_vec = if sq.semantic {
+    let query_vec = if sq.semantic && cfg.embedding_provider != "bm25" {
         Some(embedding::embed_text(&question, &cfg).await?)
     } else {
         None
     };
 
     // Step 2: Execute search strategy based on dimensions
-    let hits = {
+    let hits = if cfg.embedding_provider == "bm25" && sq.semantic {
+        search_bm25(&db, &project_id, &sq)?
+    } else {
         let qv = query_vec.as_ref();
         execute_search(&db, &project_id, &sq, qv)?
     };
@@ -663,6 +737,92 @@ pub(crate) fn execute_search(
     diverse.truncate(limit);
 
     Ok(diverse)
+}
+
+/// BM25 search: loads all chunks from DB, tokenizes, scores against query.
+fn search_bm25(db: &Database, project_id: &str, sq: &SearchQuery) -> Result<Vec<SearchHit>, String> {
+    use crate::knowledge::bm25;
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+
+    let mut sql = String::from(
+        "SELECT c.id, c.document_id, d.title, d.authors, d.journal, d.domain, d.methodology, c.heading, c.role, c.text
+         FROM doc_chunk c JOIN document d ON c.document_id = d.id
+         JOIN kb_document kd ON d.id = kd.document_id
+         JOIN project_kb pk ON kd.kb_id = pk.kb_id
+         WHERE pk.project_id = ?1 AND d.status = 'ready'"
+    );
+    let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = vec![Box::new(project_id.to_string())];
+    if !sq.kb_ids.is_empty() {
+        let ph: Vec<String> = sq.kb_ids.iter().enumerate().map(|(i, _)| format!("?{}", i + 2)).collect();
+        sql.push_str(&format!(" AND kd.kb_id IN ({})", ph.join(",")));
+        for id in &sq.kb_ids { params.push(Box::new(id.clone())); }
+    }
+    sql.push_str(" LIMIT 200");
+
+    let mut stmt = conn.prepare(&sql).map_err(|e| e.to_string())?;
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = params.iter().map(|p| p.as_ref()).collect();
+
+    struct ChunkData {
+        chunk_id: String, document_id: String, title: Option<String>,
+        authors: Option<String>, journal: Option<String>, domain: Option<String>,
+        methodology: Option<String>, heading: Option<String>, role: Option<String>,
+        text: String,
+    }
+
+    let chunks: Vec<ChunkData> = stmt.query_map(param_refs.as_slice(), |row| {
+        Ok(ChunkData {
+            chunk_id: row.get(0)?, document_id: row.get(1)?, title: row.get(2)?,
+            authors: row.get(3)?, journal: row.get(4)?, domain: row.get(5)?,
+            methodology: row.get(6)?, heading: row.get(7)?, role: row.get(8)?,
+            text: row.get(9)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    drop(stmt);
+    drop(conn);
+
+    if chunks.is_empty() {
+        return Ok(vec![]);
+    }
+
+    // Tokenize query
+    let query_tokens = bm25::tokenize(&sq.question);
+
+    // Build frequency maps and IDF
+    let freqs: Vec<HashMap<String, usize>> = chunks.iter()
+        .map(|c| bm25::token_freqs(&c.text))
+        .collect();
+    let idf = bm25::build_idf(&freqs);
+
+    // Average doc length
+    let total_len: usize = chunks.iter().map(|c| c.text.len()).sum();
+    let avg_len = total_len as f32 / chunks.len() as f32;
+
+    // Score each chunk
+    let mut scored: Vec<(usize, f32)> = chunks.iter().enumerate().map(|(i, c)| {
+        let doc_freqs = &freqs[i];
+        let doc_len = c.text.len();
+        let score = bm25::bm25_score(&query_tokens, doc_freqs, doc_len, avg_len, &idf);
+        (i, score)
+    }).collect();
+
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.truncate(sq.max_docs);
+
+    let mut hits: Vec<SearchHit> = Vec::new();
+    for (idx, score) in scored {
+        let c = &chunks[idx];
+        hits.push(SearchHit {
+            chunk_id: c.chunk_id.clone(), document_id: c.document_id.clone(),
+            title: c.title.clone(), authors: c.authors.clone(),
+            journal: c.journal.clone(), domain: c.domain.clone(),
+            methodology: c.methodology.clone(), heading: c.heading.clone(),
+            role: c.role.clone(), text: c.text.clone(), score,
+        });
+    }
+
+    Ok(hits)
 }
 
 pub(crate) fn build_context(hits: &[SearchHit], sq: &SearchQuery) -> String {

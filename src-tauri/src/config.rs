@@ -6,7 +6,7 @@ use std::path::PathBuf;
 pub const MODULES: &[&str] = &["writing", "analysis", "literature", "project_mgmt"];
 
 /// Supported embedding providers
-pub const EMBEDDING_PROVIDERS: &[&str] = &["ollama", "openai"];
+pub const EMBEDDING_PROVIDERS: &[&str] = &["bm25", "ollama", "openai"];
 
 /// Supported PDF parsers
 pub const PDF_PARSERS: &[&str] = &["native", "pymupdf", "opendataloader"];

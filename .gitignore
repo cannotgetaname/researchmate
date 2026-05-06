@@ -4,6 +4,9 @@ dist/
 .DS_Store
 *.log
 
+# Auto-generated Tauri schemas
+src-tauri/gen/
+
 # App runtime data
 .researchmate/
 
@@ -11,3 +14,4 @@ dist/
 src-tauri/binaries/
 project/
 src-tauri/gen/
+project/

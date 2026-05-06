@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, UnlistenFn } from "@tauri-apps/api/event";
 
 interface ToolRecord {
-  type: string;   // "tool_start" | "tool_result"
+  type: string;
   name: string;
   args?: Record<string, unknown>;
   result?: string;
@@ -18,15 +18,56 @@ interface ChatMessage {
   isStreaming?: boolean;
 }
 
-export function useStreamChat() {
+export function useStreamChat(sessionId: string | null) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [aiStatus, setAiStatus] = useState("就绪");
   const [aiStage, setAiStage] = useState<"thinking" | "editing" | "done" | null>(null);
   const unlistenRef = useRef<UnlistenFn[]>([]);
+  const prevSessionRef = useRef<string | null>(null);
+
+  // Load messages from DB when session changes
+  useEffect(() => {
+    if (sessionId === prevSessionRef.current) return;
+    prevSessionRef.current = sessionId;
+
+    let cancelled = false;
+    setMessages([]);  // clear immediately on switch
+
+    if (!sessionId) return () => { cancelled = true; };
+
+    (async () => {
+      try {
+        const msgs = await invoke<{id: string; session_id: string; role: string; content: string; created_at: string}[]>("get_messages", { sessionId });
+        if (!cancelled) {
+          setMessages(msgs.map((m) => ({
+            id: m.id,
+            role: m.role as "user" | "assistant" | "system",
+            content: m.content,
+          })));
+        }
+      } catch {
+        if (!cancelled) setMessages([]);
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [sessionId]);
+
+  const saveExchange = async (userMsg: ChatMessage, assistantMsg: ChatMessage) => {
+    if (!sessionId) return;
+    try {
+      await invoke("save_message", { sessionId, role: "user", content: userMsg.content });
+      // Save reasoning too if present
+      const content = assistantMsg.reasoning
+        ? `[思考]${assistantMsg.reasoning}[/思考]\n${assistantMsg.content}`
+        : assistantMsg.content;
+      await invoke("save_message", { sessionId, role: "assistant", content });
+    } catch { /* ignore */ }
+  };
 
   const sendMessage = useCallback(
-    async (text: string, _sessionId: string | null) => {
+    async (text: string) => {
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -46,10 +87,8 @@ export function useStreamChat() {
       setAiStatus("思考中...");
       setAiStage("thinking");
 
-      // Mutable flag to track stage (read by stream listener, set by stage listener)
-      let currentStage = "thinking"; // reasoning always comes first in thinking mode
+      let currentStage = "thinking";
 
-      // Listen for streaming events
       const unlisten1 = await listen<{ delta: string }>("polish-stream", (event) => {
         setMessages((prev) =>
           prev.map((m) => {
@@ -63,14 +102,12 @@ export function useStreamChat() {
         );
       });
 
-      // Listen for stage changes
       const unlisten2 = await listen<{ stage: string }>("polish-stage", (event) => {
-        const stage = event.payload.stage;
-        if (stage === "editing") {
+        if (event.payload.stage === "editing") {
           currentStage = "editing";
           setAiStatus("写作中...");
           setAiStage("editing");
-        } else if (stage === "thinking") {
+        } else if (event.payload.stage === "thinking") {
           setAiStatus("思考中...");
           setAiStage("thinking");
         }
@@ -81,6 +118,13 @@ export function useStreamChat() {
         await invoke("polish_text", { text, style: null });
         setAiStatus("完成");
         setAiStage("done");
+        // Mark streaming done + persist to DB
+        setMessages((prev) => {
+          const msg = prev.find((m) => m.id === assistantMsg.id);
+          const final: ChatMessage = { ...msg!, isStreaming: false };
+          saveExchange(userMsg, final).catch(() => {});
+          return prev.map((m) => m.id === assistantMsg.id ? final : m);
+        });
       } catch (err) {
         setAiStatus("错误");
         setAiStage(null);
@@ -93,19 +137,14 @@ export function useStreamChat() {
         );
       } finally {
         setIsLoading(false);
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsg.id ? { ...m, isStreaming: false } : m,
-          ),
-        );
         unlistenRef.current.forEach((f) => f());
       }
     },
-    [],
+    [sessionId],
   );
 
   const sendKnowledgeQuery = useCallback(
-    async (text: string, sessionId: string | null, kbIds: string[], projectId: string) => {
+    async (text: string, kbIds: string[], projectId: string) => {
       const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
@@ -125,7 +164,6 @@ export function useStreamChat() {
       setAiStatus("检索中...");
       setAiStage("thinking");
 
-      // Listen for reasoning content (from chat_with_tools thinking mode)
       const unlistenReasoning = await listen<{ delta: string }>("polish-stream", (event) => {
         setMessages((prev) =>
           prev.map((m) => {
@@ -135,7 +173,6 @@ export function useStreamChat() {
         );
       });
 
-      // Listen for tool call progress
       const unlistenTools = await listen<ToolRecord>("tool-stream", (event) => {
         setMessages((prev) =>
           prev.map((m) => {
@@ -153,15 +190,14 @@ export function useStreamChat() {
           userMessage: text,
           kbIds: kbIds.length > 0 ? kbIds : null,
         });
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === assistantMsg.id
-              ? { ...m, content: result, isStreaming: false }
-              : m,
-          ),
-        );
-        setAiStatus("完成");
-        setAiStage("done");
+        setMessages((prev) => {
+          const msg = prev.find((m) => m.id === assistantMsg.id);
+          const final: ChatMessage = { ...msg!, content: result, isStreaming: false };
+          setAiStatus("完成");
+          setAiStage("done");
+          saveExchange(userMsg, final).catch(() => {});
+          return prev.map((m) => m.id === assistantMsg.id ? final : m);
+        });
       } catch (err) {
         setAiStatus("错误");
         setAiStage(null);
@@ -183,7 +219,7 @@ export function useStreamChat() {
         );
       }
     },
-    [],
+    [sessionId],
   );
 
   return { messages, sendMessage, sendKnowledgeQuery, isLoading, aiStatus, aiStage };
