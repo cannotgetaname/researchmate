@@ -4,7 +4,7 @@ use tauri::{command, State};
 use crate::db::Database;
 use crate::config::AppConfig;
 use crate::llm::LlmEngine;
-use crate::commands::literature;
+use crate::commands::literature::search;
 use crate::knowledge;
 
 /// Tool-calling agent: lets the AI search the knowledge base.
@@ -256,14 +256,14 @@ fn execute_kb_search(
     let query_vec = knowledge::embedding::embed_text_sync(&query, cfg)?;
 
     // Execute two-phase search
-    let hits = literature::execute_search(db, project_id, &sq, Some(&query_vec))?;
+    let hits = search::execute_search(db, project_id, &sq, Some(&query_vec))?;
 
     if hits.is_empty() {
         return Ok("知识库中没有找到相关文献".into());
     }
 
     // Build context from hits, with strategy-specific instructions
-    let context = literature::build_context(&hits, &sq);
+    let context = search::build_context(&hits, &sq);
     match sq.strategy.as_str() {
         "single" => Ok(format!("【已返回论文完整全文，请基于此内容直接回答用户问题，不要再调用任何工具。】\n\n{}", context)),
         "count" | "list" => Ok(format!("【直接使用以下结果回答用户，不要再次搜索。】\n\n{}", context)),

@@ -3985,6 +3985,7 @@ dependencies = [
  "minreq",
  "pdf-extract",
  "qdrant-client",
+ "regex",
  "reqwest 0.12.28",
  "rusqlite",
  "serde",

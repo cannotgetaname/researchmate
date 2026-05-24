@@ -311,4 +311,53 @@ impl LlmEngine {
 
         Ok(full_response)
     }
+
+    /// Non-streaming chat — simple request/response, no streaming overhead.
+    /// Used for batch tasks like citation extraction where progressive display isn't needed.
+    pub async fn chat_complete(
+        &self,
+        system_prompt: &str,
+        user_message: &str,
+    ) -> Result<String, String> {
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_message},
+            ],
+            "stream": false,
+        });
+
+        let client = reqwest::Client::new();
+        let resp = client
+            .post(format!("{}/chat/completions", self.api_base))
+            .header("Authorization", format!("Bearer {}", self.api_key))
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("API 请求失败：{}", e))?;
+
+        let status = resp.status();
+        let resp_text = resp.text().await
+            .map_err(|e| format!("读取响应失败：{}", e))?;
+
+        if !status.is_success() {
+            eprintln!("[llm] API error status={}, body={}", status, &resp_text[..resp_text.len().min(500)]);
+            return Err(format!("API 返回错误 {}：{}", status.as_u16(), &resp_text[..resp_text.len().min(300)]));
+        }
+
+        let data: serde_json::Value = serde_json::from_str(&resp_text)
+            .map_err(|e| format!("JSON 解析失败：{}\n原始响应：{}", e, &resp_text[..resp_text.len().min(200)]))?;
+
+        let content = data["choices"][0]["message"]["content"]
+            .as_str()
+            .unwrap_or("")
+            .to_string();
+
+        if content.is_empty() {
+            eprintln!("[llm] empty content, full response: {}", &resp_text[..resp_text.len().min(500)]);
+        }
+
+        Ok(content)
+    }
 }

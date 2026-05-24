@@ -47,6 +47,43 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
   const [reasoning, setReasoning] = useState("");
   const [asking, setAsking] = useState(false);
   const [expanded, setExpanded] = useState<"kb" | "docs" | null>("docs");
+  const [structureDoc, setStructureDoc] = useState<DocInfo | null>(null);
+  const [structureNodes, setStructureNodes] = useState<{id:string;parent_id:string|null;tag:string;heading:string;role:string|null;summary:string|null;ordering:number}[] | null>(null);
+  const [structureLoading, setStructureLoading] = useState(false);
+  const [structureError, setStructureError] = useState<string | null>(null);
+  const [citations, setCitations] = useState<{id:string;key:string;title:string|null;raw:string|null}[] | null>(null);
+  const [citationsLoading, setCitationsLoading] = useState(false);
+  const [citationsError, setCitationsError] = useState<string | null>(null);
+
+  const handleExtractCitationsDoi = async (doc: DocInfo) => {
+    setStructureDoc(doc);
+    setStructureNodes(null);
+    setCitations(null);
+    setCitationsError(null);
+    setCitationsLoading(true);
+    try {
+      const entries = await invoke<{id:string;key:string;title:string|null;raw:string|null}[]>("extract_citations_doi", { documentId: doc.id });
+      setCitations(entries);
+    } catch (e) {
+      setCitationsError(String(e));
+    }
+    setCitationsLoading(false);
+  };
+
+  const handleExtractCitationsAi = async (doc: DocInfo) => {
+    setStructureDoc(doc);
+    setStructureNodes(null);
+    setCitations(null);
+    setCitationsError(null);
+    setCitationsLoading(true);
+    try {
+      const entries = await invoke<{id:string;key:string;title:string|null;raw:string|null}[]>("extract_citations_ai", { documentId: doc.id });
+      setCitations(entries);
+    } catch (e) {
+      setCitationsError(String(e));
+    }
+    setCitationsLoading(false);
+  };
 
   // ── Load KB docs (always by active KB) ──
   const loadKbDocs = async () => {
@@ -82,6 +119,36 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
     } else {
       setDeleteKbTarget({ id, name }); setDeleteKbConfirm("");
     }
+  };
+
+  const handleAnalyzeStructureAi = async (doc: DocInfo) => {
+    setStructureDoc(doc);
+    setStructureNodes(null);
+    setCitations(null);
+    setStructureError(null);
+    setStructureLoading(true);
+    try {
+      const nodes = await invoke<{id:string;parent_id:string|null;tag:string;heading:string;role:string|null;summary:string|null;ordering:number}[]>("extract_paper_structure_ai", { documentId: doc.id });
+      setStructureNodes(nodes);
+    } catch (e) {
+      setStructureError(String(e));
+    }
+    setStructureLoading(false);
+  };
+
+  const handleExtractCitations = async (doc: DocInfo) => {
+    setStructureDoc(doc);
+    setStructureNodes(null);
+    setCitations(null);
+    setCitationsError(null);
+    setCitationsLoading(true);
+    try {
+      const entries = await invoke<{id:string;key:string;title:string|null;raw:string|null}[]>("extract_citations", { documentId: doc.id });
+      setCitations(entries);
+    } catch (e) {
+      setCitationsError(String(e));
+    }
+    setCitationsLoading(false);
   };
 
   const toggleSearchKb = (id: string) => {
@@ -125,6 +192,20 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
     setUploading(false);
     await loadKbDocs(); await loadKbs();
     setTimeout(() => { setUploadLog([]); setExpanded("docs"); }, 5000);
+  };
+
+  const handleAnalyzeStructure = async (doc: DocInfo, force?: boolean) => {
+    setStructureDoc(doc);
+    setStructureNodes(null);
+    setStructureError(null);
+    setStructureLoading(true);
+    try {
+      const nodes = await invoke<{id:string;parent_id:string|null;tag:string;heading:string;role:string|null;summary:string|null;ordering:number}[]>("extract_paper_structure", { documentId: doc.id, projectId, force: force ?? false });
+      setStructureNodes(nodes);
+    } catch (e) {
+      setStructureError(String(e));
+    }
+    setStructureLoading(false);
   };
 
   const handleDeleteDoc = async (id: string) => {
@@ -263,7 +344,14 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
                         {doc.domain && <span style={{ padding: "0 6px", borderRadius: "var(--radius-pill)", backgroundColor: "var(--color-canvas-soft)" }}>{doc.domain}</span>}
                       </div>
                     </div>
-                    <button onClick={() => handleDeleteDoc(doc.id)} style={{ background: "none", border: "none", color: "var(--color-muted-soft)", cursor: "pointer", fontSize: "16px", padding: "0 4px", lineHeight: 1, flexShrink: 0 }}>×</button>
+                    <div style={{ display: "flex", gap: "2px", flexShrink: 0 }}>
+                      <button onClick={() => handleAnalyzeStructure(doc)} title="查看结构"
+                        style={{ background: "none", border: "none", color: "var(--color-muted-soft)", cursor: "pointer", fontSize: "13px", padding: "0 4px", lineHeight: 1 }}>📊</button>
+                      <button onClick={() => handleExtractCitations(doc)} title="提取引用"
+                        style={{ background: "none", border: "none", color: "var(--color-muted-soft)", cursor: "pointer", fontSize: "13px", padding: "0 4px", lineHeight: 1 }}>📎</button>
+                      <button onClick={() => handleDeleteDoc(doc.id)} title="删除文献"
+                        style={{ background: "none", border: "none", color: "var(--color-muted-soft)", cursor: "pointer", fontSize: "16px", padding: "0 4px", lineHeight: 1 }}>×</button>
+                    </div>
                   </div>
                 </div>
               ))
@@ -364,6 +452,166 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
         </>
       )}
 
+      {/* Paper Detail Modal (Structure + Citations) */}
+      {structureDoc && (
+        <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(2px)" }}
+          onClick={() => { setStructureDoc(null); setStructureNodes(null); setCitations(null); setStructureError(null); setCitationsError(null); }}>
+          <div style={{ backgroundColor: "var(--color-surface-card)", borderRadius: "var(--radius-lg)", padding: "var(--space-xl)", width: "clamp(420px, 50vw, 640px)", maxHeight: "78vh", display: "flex", flexDirection: "column", border: "1px solid var(--color-hairline)", boxShadow: "0 8px 32px rgba(0,0,0,0.12)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-sm)", flexShrink: 0 }}>
+              <h3 style={{ fontSize: "15px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1 }}>
+                {structureDoc.title ?? structureDoc.filename}
+              </h3>
+              <button onClick={() => { setStructureDoc(null); setStructureNodes(null); setCitations(null); setStructureError(null); setCitationsError(null); }}
+                style={{ background: "none", border: "none", color: "var(--color-muted)", fontSize: "18px", cursor: "pointer", lineHeight: 1, flexShrink: 0, marginLeft: "8px" }}>×</button>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ display: "flex", gap: "var(--space-xs)", marginBottom: "var(--space-base)", borderBottom: "1px solid var(--color-hairline)", flexShrink: 0 }}>
+              {[
+                ["📊", "结构", () => handleAnalyzeStructure(structureDoc!)],
+                ["📎", "引用", () => handleExtractCitations(structureDoc!)],
+              ].map(([icon, label, action]) => {
+                const isActive = (label === "结构" && structureNodes !== null) || (label === "引用" && citations !== null);
+                return (
+                  <div key={label as string} onClick={action as () => void}
+                    style={{
+                      padding: "6px 14px", fontSize: "12px", fontWeight: 600, cursor: "pointer",
+                      borderBottom: `2px solid ${isActive ? "var(--color-primary)" : "transparent"}`,
+                      color: isActive ? "var(--color-ink)" : "var(--color-muted)",
+                      transition: "all 0.15s",
+                    }}>
+                    {icon as string} {label as string}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Content */}
+            <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+              {structureLoading || citationsLoading ? (
+                <div style={{ textAlign: "center", padding: "var(--space-xxl)", color: "var(--color-muted)" }}>
+                  <span className="timeline-pill thinking">分析中</span>
+                </div>
+              ) : structureError ? (
+                <div style={{ textAlign: "center", padding: "var(--space-xxl)" }}>
+                  <div style={{ color: "var(--color-error)", fontSize: "13px", marginBottom: "8px" }}>分析失败</div>
+                  <div style={{ color: "var(--color-muted)", fontSize: "11px", fontFamily: "var(--font-code)", whiteSpace: "pre-wrap", marginBottom: "12px" }}>{structureError}</div>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                    <button onClick={() => handleAnalyzeStructure(structureDoc!, true)}
+                      style={{ height: "28px", padding: "0 10px", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-sm)", background: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                      🔄 正则重试
+                    </button>
+                    <button onClick={() => handleAnalyzeStructureAi(structureDoc!)}
+                      style={{ height: "28px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--color-primary)", color: "var(--color-on-primary)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                      🤖 AI 分析
+                    </button>
+                  </div>
+                </div>
+              ) : citationsError ? (
+                <div style={{ textAlign: "center", padding: "var(--space-xxl)" }}>
+                  <div style={{ color: "var(--color-error)", fontSize: "13px", marginBottom: "8px" }}>提取失败</div>
+                  <div style={{ color: "var(--color-muted)", fontSize: "11px", fontFamily: "var(--font-code)", whiteSpace: "pre-wrap", marginBottom: "12px" }}>{citationsError}</div>
+                  <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                    <button onClick={() => handleExtractCitations(structureDoc!)}
+                      style={{ height: "28px", padding: "0 10px", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-sm)", background: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                      🔄 正则重试
+                    </button>
+                    <button onClick={() => handleExtractCitationsDoi(structureDoc!)}
+                      style={{ height: "28px", padding: "0 10px", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-sm)", background: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                      📡 DOI 查询
+                    </button>
+                    <button onClick={() => handleExtractCitationsAi(structureDoc!)}
+                      style={{ height: "28px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--color-primary)", color: "var(--color-on-primary)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                      🤖 AI 提取
+                    </button>
+                  </div>
+                </div>
+              ) : structureNodes ? (
+                structureNodes.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "var(--space-xxl)" }}>
+                    <div style={{ color: "var(--color-muted)", fontSize: "13px", marginBottom: "8px" }}>未识别到章节结构</div>
+                    <div style={{ color: "var(--color-muted-soft)", fontSize: "11px", marginBottom: "12px" }}>正则匹配无法解析此论文格式</div>
+                    <div style={{ display: "flex", gap: "8px", justifyContent: "center" }}>
+                      <button onClick={() => handleAnalyzeStructure(structureDoc!, true)}
+                        style={{ height: "28px", padding: "0 10px", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-sm)", background: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                        🔄 正则重试
+                      </button>
+                      <button onClick={() => handleAnalyzeStructureAi(structureDoc!)}
+                        style={{ height: "28px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--color-primary)", color: "var(--color-on-primary)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                        🤖 AI 分析
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <StructureTree nodes={structureNodes} />
+                    <div style={{ marginTop: "var(--space-base)", display: "flex", gap: "8px" }}>
+                      <button onClick={() => handleAnalyzeStructure(structureDoc!, true)}
+                        style={{ height: "28px", padding: "0 10px", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-sm)", background: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                        🔄 正则重分析
+                      </button>
+                      <button onClick={() => handleAnalyzeStructureAi(structureDoc!)}
+                        style={{ height: "28px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--color-primary)", color: "var(--color-on-primary)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                        🤖 AI 分析
+                      </button>
+                    </div>
+                  </div>
+                )
+              ) : citations ? (
+                citations.length === 0 ? (
+                  <div style={{ textAlign: "center", padding: "var(--space-xxl)" }}>
+                    <div style={{ color: "var(--color-muted)", fontSize: "13px", marginBottom: "8px" }}>未找到参考文献</div>
+                    <div style={{ color: "var(--color-muted-soft)", fontSize: "11px", marginBottom: "12px" }}>正则匹配无法识别此论文的引用格式</div>
+                    <div style={{ display: "flex", gap: "8px", justifyContent: "center", flexWrap: "wrap" }}>
+                      <button onClick={() => handleExtractCitationsDoi(structureDoc!)}
+                        style={{ height: "28px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--color-success)", color: "#fff", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                        📡 DOI 查询
+                      </button>
+                      <button onClick={() => handleExtractCitationsAi(structureDoc!)}
+                        style={{ height: "28px", padding: "0 12px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--color-primary)", color: "var(--color-on-primary)", fontSize: "11px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                        🤖 AI 提取
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "var(--space-sm)", gap: "4px" }}>
+                      <div style={{ fontSize: "12px", color: "var(--color-muted)", padding: "4px 8px", background: "var(--color-canvas-soft)", borderRadius: "var(--radius-sm)" }}>
+                        📚 找到 {citations.length} 条引用
+                      </div>
+                      <div style={{ display: "flex", gap: "4px" }}>
+                        <button onClick={() => handleExtractCitationsDoi(structureDoc!)}
+                          style={{ height: "24px", padding: "0 8px", border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-sm)", background: "var(--color-canvas-soft)", color: "var(--color-muted)", fontSize: "10px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                          📡 DOI
+                        </button>
+                        <button onClick={() => handleExtractCitationsAi(structureDoc!)}
+                          style={{ height: "24px", padding: "0 8px", border: "none", borderRadius: "var(--radius-sm)", background: "var(--color-primary)", color: "var(--color-on-primary)", fontSize: "10px", cursor: "pointer", fontFamily: "var(--font-ui)" }}>
+                          🤖 AI
+                        </button>
+                      </div>
+                    </div>
+                    {citations.map((c, i) => (
+                      <div key={c.id} style={{ padding: "8px 0", borderBottom: i < citations.length - 1 ? "1px solid var(--color-hairline-soft)" : "none", fontSize: "12px", lineHeight: 1.65 }}>
+                        <div style={{ fontWeight: 700, color: "var(--color-primary)", marginBottom: "1px", fontSize: "11px" }}>
+                          [{i + 1}] {c.key}
+                        </div>
+                        {c.title && <div style={{ color: "var(--color-body)", marginBottom: "2px" }}>{c.title}</div>}
+                      </div>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div style={{ textAlign: "center", padding: "var(--space-xxl)", color: "var(--color-muted)" }}>
+                  <div style={{ fontSize: "13px", marginBottom: "4px" }}>点击上方标签页开始分析</div>
+                  <div style={{ fontSize: "11px", color: "var(--color-muted-soft)" }}>📊 章节结构 · 📎 参考文献</div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* New KB Dialog */}
       {showNewKb && (
         <div style={{ position: "fixed", inset: 0, backgroundColor: "rgba(0,0,0,0.3)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000 }}
@@ -382,6 +630,89 @@ export default function DocumentPanel({ projectId }: { projectId: string }) {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+interface StructureNode {
+  id: string; parent_id: string | null; tag: string;
+  heading: string; role: string | null; summary: string | null; ordering: number;
+}
+
+function StructureTree({ nodes }: { nodes: StructureNode[] }) {
+  const roleColor: Record<string, string> = {
+    background: "#9fbbe0", literature: "#c0a8dd", method: "#9b59b6",
+    experiment: "#dfa88f", result: "#17a2b8", discussion: "#3c9d6e",
+    conclusion: "#d4a017", appendix: "#807d72",
+    claim: "#4a90d9", evidence: "#3c9d6e", hypothesis: "#d4a017", gap: "#e07b39",
+  };
+  const roleLabel: Record<string, string> = {
+    background: "背景", literature: "相关工作", method: "方法",
+    experiment: "实验", result: "结果", discussion: "讨论",
+    conclusion: "结论", appendix: "附录",
+  };
+
+  // Group by parent
+  const childrenMap: Record<string, StructureNode[]> = {};
+  for (const n of nodes) {
+    const key = n.parent_id ?? "__root__";
+    if (!childrenMap[key]) childrenMap[key] = [];
+    childrenMap[key].push(n);
+  }
+
+  const rootChildren = childrenMap["__root__"] || [];
+
+  return (
+    <div style={{ fontSize: "13px", lineHeight: 1.8 }}>
+      {rootChildren.map((node) => (
+        <TreeNode key={node.id} node={node} childrenMap={childrenMap} roleColor={roleColor} roleLabel={roleLabel} depth={0} />
+      ))}
+    </div>
+  );
+}
+
+function TreeNode({ node, childrenMap, roleColor, roleLabel, depth }: {
+  node: StructureNode; childrenMap: Record<string, StructureNode[]>; roleColor: Record<string, string>; roleLabel: Record<string, string>; depth: number;
+}) {
+  const [open, setOpen] = useState(true);
+  const childNodes = childrenMap[node.id] || [];
+  const hasChildren = childNodes.length > 0;
+  const indent = depth * 20;
+
+  return (
+    <div>
+      <div style={{
+        display: "flex", alignItems: "baseline", gap: "4px",
+        padding: "2px 0", marginLeft: indent,
+        cursor: hasChildren ? "pointer" : "default",
+        color: "var(--color-ink)",
+      }} onClick={() => hasChildren && setOpen(!open)}>
+        {hasChildren && <span style={{ fontSize: "10px", width: "12px", flexShrink: 0, color: "var(--color-muted)" }}>{open ? "▼" : "▶"}</span>}
+        {!hasChildren && <span style={{ width: "12px", flexShrink: 0 }} />}
+        <span style={{
+          fontWeight: depth === 0 ? 600 : 400,
+          fontSize: depth === 0 ? "13px" : depth === 1 ? "12px" : "11px",
+        }} title={node.summary ?? undefined}>
+          {node.heading}
+        </span>
+        {node.role && (
+          <span style={{
+            fontSize: "9px", fontWeight: 600, padding: "0 5px", borderRadius: "var(--radius-pill)",
+            backgroundColor: (roleColor[node.role] || "#999") + "22",
+            color: roleColor[node.role] || "#999",
+          }}>
+            {roleLabel[node.role] || node.role}
+          </span>
+        )}
+        {node.summary && (
+          <span style={{ fontSize: "10px", color: "var(--color-muted-soft)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {node.summary}
+          </span>
+        )}
+      </div>
+      {open && hasChildren && childNodes.map((child) => (
+        <TreeNode key={child.id} node={child} childrenMap={childrenMap} roleColor={roleColor} roleLabel={roleLabel} depth={depth + 1} />
+      ))}
     </div>
   );
 }

@@ -9,6 +9,13 @@ pub struct Database {
 }
 
 impl Database {
+    /// Lock the database connection, recovering from poisoned mutex.
+    pub fn lock_conn(&self) -> std::sync::MutexGuard<'_, Connection> {
+        self.conn.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
+impl Database {
     pub fn new(app_dir: &PathBuf) -> SqlResult<Self> {
         std::fs::create_dir_all(app_dir).expect("failed to create app dir");
         let db_path = app_dir.join("data.db");
@@ -50,6 +57,43 @@ impl Database {
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS citation (
+                id          TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES document(id),
+                key         TEXT NOT NULL,
+                title       TEXT,
+                raw         TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS cross_paper_link (
+                id          TEXT PRIMARY KEY,
+                source_doc  TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+                target_doc  TEXT NOT NULL REFERENCES document(id) ON DELETE CASCADE,
+                relation    TEXT NOT NULL DEFAULT 'cites',
+                confidence  REAL DEFAULT 1.0,
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS literature_comparison (
+                id          TEXT PRIMARY KEY,
+                project_id  TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+                title       TEXT,
+                content     TEXT NOT NULL,
+                doc_ids     TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS paper_structure (
+                id          TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL REFERENCES document(id),
+                parent_id   TEXT,
+                tag         TEXT NOT NULL,
+                heading     TEXT NOT NULL,
+                role        TEXT,
+                summary     TEXT,
+                ordering    INTEGER NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS document (
