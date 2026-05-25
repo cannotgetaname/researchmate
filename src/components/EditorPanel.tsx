@@ -489,8 +489,8 @@ export default function EditorPanel({
           .tiptap mark { background: #fff3cd; padding: 0 2px; }
           .tiptap a { color: var(--color-primary); text-decoration: underline; }
           .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: var(--color-muted-soft); pointer-events: none; height: 0; }
-          .caption { display: block; text-align: center; font-size: 14px; color: var(--color-muted); margin: 0.3em 0 1em; }
-          .caption [data-node-view-content] { display: inline !important; }
+          .caption { text-align: center; font-size: 14px; color: var(--color-muted); margin: 0.3em 0 1em; }
+          .caption div { display: inline !important; }
           .caption .caption-prefix { font-weight: 600; color: var(--color-ink); }
         `}</style>
 

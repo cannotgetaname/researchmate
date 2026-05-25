@@ -12,7 +12,7 @@ function CaptionRenderer({ node }: ReactNodeViewProps) {
   return (
     <NodeViewWrapper className="caption" data-caption-type={type}>
       <span className="caption-prefix" contentEditable={false}>{prefix}: </span>
-      <NodeViewContent className="caption-text" />
+      <NodeViewContent {...({ as: "span", className: "caption-text" } as any)} />
     </NodeViewWrapper>
   );
 }
