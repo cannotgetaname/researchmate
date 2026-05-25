@@ -88,6 +88,18 @@ impl Default for SearchQuery {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct WritingStage {
+    pub id: String,
+    pub project_id: String,
+    pub stage_key: String,
+    pub status: String,
+    pub sort_order: i32,
+    pub notes: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct SearchHit {
     pub chunk_id: String,
     pub document_id: String,

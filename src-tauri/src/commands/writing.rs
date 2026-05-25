@@ -7,6 +7,10 @@ use crate::config::AppConfig;
 use crate::llm::LlmEngine;
 
 const WRITING_POLISH_PROMPT: &str = include_str!("../../prompts/writing_polish.md");
+const TRANSLATE_CN2EN_PROMPT: &str = include_str!("../../prompts/translate_cn2en.md");
+const POLISH_CN_PROMPT: &str = include_str!("../../prompts/polish_cn.md");
+const LOGIC_CHECK_PROMPT: &str = include_str!("../../prompts/logic_check.md");
+const DE_AI_PROMPT: &str = include_str!("../../prompts/de_ai.md");
 
 #[derive(serde::Serialize, Clone)]
 pub struct StreamChunk {
@@ -323,4 +327,166 @@ pub async fn get_messages(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(messages)
+}
+
+// ── AI Actions (translate / polish_cn / logic_check / de_ai) ──
+
+/// Generic AI action: translate / polish_cn / logic_check / de_ai
+#[command]
+pub async fn ai_action(
+    action: String,
+    text: String,
+    app_handle: tauri::AppHandle,
+    config: State<'_, Arc<RwLock<AppConfig>>>,
+) -> Result<String, String> {
+    let prompt = match action.as_str() {
+        "translate_cn2en" => TRANSLATE_CN2EN_PROMPT,
+        "polish_cn" => POLISH_CN_PROMPT,
+        "logic_check" => LOGIC_CHECK_PROMPT,
+        "de_ai" => DE_AI_PROMPT,
+        _ => return Err(format!("未知的 AI 操作：{}", action)),
+    };
+
+    let (engine, key_empty) = {
+        let cfg = config.read().unwrap();
+        let model = cfg.model_for("writing").to_string();
+        let engine = LlmEngine::new(&cfg, &model);
+        let key_empty = cfg.deepseek_api_key.is_empty();
+        (engine, key_empty)
+    };
+
+    if key_empty {
+        return Err("请先在设置中配置 DeepSeek API Key。".to_string());
+    }
+
+    let handle = app_handle.clone();
+    let handle2 = app_handle.clone();
+
+    let result = engine
+        .chat_stream_thinking(
+            prompt,
+            &[],
+            &text,
+            move |delta| {
+                let _ = handle.emit("polish-stream", StreamChunk { delta });
+            },
+            move |stage| {
+                let _ = handle2.emit("polish-stage", StageEvent { stage: stage.into() });
+            },
+        )
+        .await?;
+
+    Ok(result)
+}
+
+// ── Writing Pipeline Stage Management ──
+
+use crate::db::models::WritingStage;
+
+const STAGE_DEFS: &[(&str, i32)] = &[
+    ("lit_review", 0),
+    ("experiment", 1),
+    ("draft_cn", 2),
+    ("translate", 3),
+    ("polish_en", 4),
+    ("logic_check", 5),
+    ("formatting", 6),
+];
+
+/// Initialize default stages for a project (idempotent)
+#[command]
+pub async fn init_stages(
+    project_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<Vec<WritingStage>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    for (key, order) in STAGE_DEFS {
+        let id = uuid::Uuid::new_v4().to_string();
+        conn.execute(
+            "INSERT OR IGNORE INTO writing_stage (id, project_id, stage_key, status, sort_order, notes, created_at, updated_at)
+             VALUES (?1, ?2, ?3, 'pending', ?4, '', ?5, ?5)",
+            rusqlite::params![id, project_id, key, order, now],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    // Return current stages
+    let mut stmt = conn.prepare(
+        "SELECT id, project_id, stage_key, status, sort_order, notes, created_at, updated_at
+         FROM writing_stage WHERE project_id = ?1 ORDER BY sort_order"
+    ).map_err(|e| e.to_string())?;
+
+    let stages = stmt.query_map(rusqlite::params![project_id], |row| {
+        Ok(WritingStage {
+            id: row.get(0)?, project_id: row.get(1)?, stage_key: row.get(2)?,
+            status: row.get(3)?, sort_order: row.get(4)?, notes: row.get(5)?,
+            created_at: row.get(6)?, updated_at: row.get(7)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    Ok(stages)
+}
+
+/// Get all stages for a project
+#[command]
+pub async fn get_stages(
+    project_id: String,
+    db: State<'_, Arc<Database>>,
+) -> Result<Vec<WritingStage>, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let mut stmt = conn.prepare(
+        "SELECT id, project_id, stage_key, status, sort_order, notes, created_at, updated_at
+         FROM writing_stage WHERE project_id = ?1 ORDER BY sort_order"
+    ).map_err(|e| e.to_string())?;
+
+    let stages = stmt.query_map(rusqlite::params![project_id], |row| {
+        Ok(WritingStage {
+            id: row.get(0)?, project_id: row.get(1)?, stage_key: row.get(2)?,
+            status: row.get(3)?, sort_order: row.get(4)?, notes: row.get(5)?,
+            created_at: row.get(6)?, updated_at: row.get(7)?,
+        })
+    }).map_err(|e| e.to_string())?
+    .collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())?;
+
+    Ok(stages)
+}
+
+/// Update a stage's status or notes
+#[command]
+pub async fn update_stage(
+    id: String,
+    status: Option<String>,
+    notes: Option<String>,
+    db: State<'_, Arc<Database>>,
+) -> Result<WritingStage, String> {
+    let conn = db.conn.lock().map_err(|e| e.to_string())?;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    if let Some(ref s) = status {
+        conn.execute(
+            "UPDATE writing_stage SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![s, now, id],
+        ).map_err(|e| e.to_string())?;
+    }
+    if let Some(ref n) = notes {
+        conn.execute(
+            "UPDATE writing_stage SET notes = ?1, updated_at = ?2 WHERE id = ?3",
+            rusqlite::params![n, now, id],
+        ).map_err(|e| e.to_string())?;
+    }
+
+    let mut stmt = conn.prepare(
+        "SELECT id, project_id, stage_key, status, sort_order, notes, created_at, updated_at
+         FROM writing_stage WHERE id = ?1"
+    ).map_err(|e| e.to_string())?;
+
+    stmt.query_row(rusqlite::params![id], |row| {
+        Ok(WritingStage {
+            id: row.get(0)?, project_id: row.get(1)?, stage_key: row.get(2)?,
+            status: row.get(3)?, sort_order: row.get(4)?, notes: row.get(5)?,
+            created_at: row.get(6)?, updated_at: row.get(7)?,
+        })
+    }).map_err(|e| e.to_string())
 }

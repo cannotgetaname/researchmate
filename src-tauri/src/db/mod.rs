@@ -165,6 +165,18 @@ impl Database {
                 kb_id       TEXT NOT NULL REFERENCES knowledge_base(id) ON DELETE CASCADE,
                 PRIMARY KEY (session_id, kb_id)
             );
+
+            CREATE TABLE IF NOT EXISTS writing_stage (
+                id          TEXT PRIMARY KEY,
+                project_id  TEXT NOT NULL REFERENCES project(id) ON DELETE CASCADE,
+                stage_key   TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'pending',
+                sort_order  INTEGER NOT NULL,
+                notes       TEXT NOT NULL DEFAULT '',
+                created_at  TEXT NOT NULL,
+                updated_at  TEXT NOT NULL,
+                UNIQUE(project_id, stage_key)
+            );
             ",
         )?;
 

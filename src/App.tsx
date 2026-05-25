@@ -6,6 +6,7 @@ import EditorPanel from "./components/EditorPanel";
 import ChatPanel from "./components/ChatPanel";
 import DocumentPanel from "./components/DocumentPanel";
 import VersionPanel from "./components/VersionPanel";
+import WritingPipeline from "./components/WritingPipeline";
 import StatusBar from "./components/StatusBar";
 
 interface AppConfig {
@@ -63,6 +64,7 @@ export default function App() {
   const [citationInsert, setCitationInsert] = useState("");
   const [saveMsg, setSaveMsg] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState(false);
+  const [mgmtTab, setMgmtTab] = useState("progress"); // 管理子标签
 
   // Check for updates on startup
   useEffect(() => {
@@ -218,10 +220,57 @@ export default function App() {
               <span key={m.key} className={`chat-tab ${activeModule === m.key ? "active" : ""}`} onClick={() => setActiveModule(m.key)}>{m.label}</span>
             ))}
           </div>
-          <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--color-muted)", fontSize: "13px", lineHeight: 1.8 }}>
-            📋 项目管理<br />
-            <span style={{ fontSize: "12px", color: "var(--color-muted-soft)" }}>实验方案设计 · 写作进度看板 · 课题统计</span><br />
-            <span style={{ fontSize: "11px", color: "var(--color-muted-soft)" }}>（开发中）</span>
+          {/* 管理子标签 */}
+          <div style={{ display: "flex", gap: 0, borderBottom: "1px solid var(--color-hairline)", flexShrink: 0 }}>
+            {[
+              { key: "experiment", label: "实验设计" },
+              { key: "progress", label: "写作进度" },
+              { key: "stats", label: "课题统计" },
+            ].map((t) => (
+              <span
+                key={t.key}
+                style={{
+                  padding: "10px var(--space-base)", fontSize: 13, cursor: "pointer",
+                  color: mgmtTab === t.key ? "var(--color-ink)" : "var(--color-muted)",
+                  borderBottom: mgmtTab === t.key ? "2px solid var(--color-primary)" : "2px solid transparent",
+                  fontWeight: mgmtTab === t.key ? 600 : 400,
+                }}
+                onClick={() => setMgmtTab(t.key)}
+              >
+                {t.label}
+              </span>
+            ))}
+          </div>
+          <div style={{ flex: 1, overflow: "hidden" }}>
+            {mgmtTab === "progress" && (
+              <WritingPipeline
+                projectId={activeProject}
+                activeTab={mgmtTab}
+                onAiAction={(action) => {
+                  // Route AI actions to ChatPanel
+                  if (action === "export_docx") {
+                    // handled by EditorToolbar, no-op here
+                  } else if (action === "polish_cn" || action === "translate_cn2en" || action === "logic_check" || action === "de_ai") {
+                    // Send to ChatPanel with action prefix
+                    setActiveModule("write");
+                    // Use fillText to trigger AI action in ChatPanel
+                    setFillText(`__ACTION__${action}__`);
+                  }
+                }}
+              />
+            )}
+            {mgmtTab === "experiment" && (
+              <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--color-muted)", fontSize: 13 }}>
+                🔬 实验方案设计<br />
+                <span style={{ fontSize: 12, color: "var(--color-muted-soft)" }}>（开发中）</span>
+              </div>
+            )}
+            {mgmtTab === "stats" && (
+              <div style={{ padding: "var(--space-xl)", textAlign: "center", color: "var(--color-muted)", fontSize: 13 }}>
+                📊 课题统计<br />
+                <span style={{ fontSize: 12, color: "var(--color-muted-soft)" }}>（开发中）</span>
+              </div>
+            )}
           </div>
         </div>
         <div style={{ display: activeModule === "version" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>

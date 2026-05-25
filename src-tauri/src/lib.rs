@@ -88,6 +88,10 @@ pub fn run() {
             commands::agent::set_session_kbs,
             commands::agent::get_session_kbs,
             commands::util::read_image_as_data_url,
+            commands::writing::ai_action,
+            commands::writing::init_stages,
+            commands::writing::get_stages,
+            commands::writing::update_stage,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
