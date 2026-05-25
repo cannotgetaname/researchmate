@@ -17,7 +17,7 @@ import { marked } from "marked";
 import "katex/dist/katex.min.css";
 import { MathInline, MathBlock } from "./MathExtension";
 import { Caption, CaptionRenumber, nextCaptionNumber } from "./CaptionExtension";
-import { FontSize } from "./FontSizeExtension";
+import { FontSize } from "@tiptap/extension-text-style";
 import EditorToolbar from "./EditorToolbar";
 
 interface EditorPanelProps {
