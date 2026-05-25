@@ -1,5 +1,5 @@
 import { Node, mergeAttributes, InputRule, textblockTypeInputRule } from "@tiptap/core";
-import { ReactNodeViewRenderer, type ReactNodeViewProps } from "@tiptap/react";
+import { ReactNodeViewRenderer, NodeViewWrapper, type ReactNodeViewProps } from "@tiptap/react";
 import katex from "katex";
 
 // ── React renderer for inline math ──
@@ -12,12 +12,9 @@ function InlineMathRenderer({ node }: ReactNodeViewProps) {
     html = latex;
   }
   return (
-    <span
-      contentEditable={false}
-      dangerouslySetInnerHTML={{ __html: html }}
-      style={{ display: "inline", fontSize: "1em" }}
-      data-latex={latex}
-    />
+    <NodeViewWrapper as="span" contentEditable={false} style={{ display: "inline" }}>
+      <span dangerouslySetInnerHTML={{ __html: html }} data-latex={latex} />
+    </NodeViewWrapper>
   );
 }
 
@@ -31,12 +28,9 @@ function BlockMathRenderer({ node }: ReactNodeViewProps) {
     html = latex;
   }
   return (
-    <div
-      contentEditable={false}
-      dangerouslySetInnerHTML={{ __html: html }}
-      style={{ textAlign: "center", margin: "1em 0", fontSize: "1.05em" }}
-      data-latex={latex}
-    />
+    <NodeViewWrapper as="div" contentEditable={false} style={{ textAlign: "center", margin: "1em 0" }}>
+      <div dangerouslySetInnerHTML={{ __html: html }} data-latex={latex} />
+    </NodeViewWrapper>
   );
 }
 
