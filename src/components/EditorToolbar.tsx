@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import type { Editor } from "@tiptap/react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
@@ -41,6 +42,24 @@ interface EditorToolbarProps {
 export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: EditorToolbarProps) {
   const isActive = (name: string, attrs?: Record<string, unknown>) =>
     editor.isActive(name, attrs);
+
+  // Track current font/font-size at selection
+  const [curFont, setCurFont] = useState("");
+  const [curSize, setCurSize] = useState("");
+  useEffect(() => {
+    const sync = () => {
+      const a = editor.getAttributes("textStyle");
+      setCurFont(a.fontFamily || "");
+      setCurSize(a.fontSize || "");
+    };
+    editor.on("selectionUpdate", sync);
+    editor.on("transaction", sync);
+    sync();
+    return () => {
+      editor.off("selectionUpdate", sync);
+      editor.off("transaction", sync);
+    };
+  }, [editor]);
 
   const addLink = () => {
     const url = window.prompt("链接地址：", "https://");
@@ -137,7 +156,7 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
           backgroundColor: "var(--color-canvas)", color: "var(--color-muted)",
           cursor: "pointer", outline: "none",
         }}
-        value={editor.getAttributes("textStyle").fontSize || ""}
+        value={curSize}
         onChange={(e) => {
           editor.chain().focus().setMark("textStyle", { fontSize: e.target.value || null }).run();
         }}
@@ -162,7 +181,7 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
           backgroundColor: "var(--color-canvas)", color: "var(--color-muted)",
           cursor: "pointer", outline: "none", maxWidth: "90px",
         }}
-        value={editor.getAttributes("textStyle").fontFamily || ""}
+        value={curFont}
         onChange={(e) => {
           editor.chain().focus().setMark("textStyle", { fontFamily: e.target.value || null }).run();
         }}
