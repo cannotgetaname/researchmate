@@ -4,8 +4,6 @@ import type { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
 import { Table, TableCell, TableHeader, TableRow } from "@tiptap/extension-table";
 import Placeholder from "@tiptap/extension-placeholder";
-import Underline from "@tiptap/extension-underline";
-import Link from "@tiptap/extension-link";
 import ImageExt from "@tiptap/extension-image";
 import Highlight from "@tiptap/extension-highlight";
 import TextAlign from "@tiptap/extension-text-align";
@@ -17,7 +15,7 @@ import { marked } from "marked";
 import "katex/dist/katex.min.css";
 import { MathInline, MathBlock } from "./MathExtension";
 import { Caption, CaptionRenumber, nextCaptionNumber } from "./CaptionExtension";
-import { FontSize } from "@tiptap/extension-text-style";
+import { FontSize, TextStyle } from "@tiptap/extension-text-style";
 import EditorToolbar from "./EditorToolbar";
 
 interface EditorPanelProps {
@@ -233,13 +231,12 @@ export default function EditorPanel({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ heading: { levels: [1, 2, 3] } }),
+      TextStyle,
       Table.configure({ resizable: true }),
       TableRow,
       TableCell,
       TableHeader,
       Placeholder.configure({ placeholder: "开始写作... 选中文字可出现格式菜单" }),
-      Underline,
-      Link.configure({ openOnClick: false }),
       ImageExt,
       Highlight,
       TextAlign.configure({ types: ["heading", "paragraph"] }),
