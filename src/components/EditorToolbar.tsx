@@ -190,12 +190,11 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         title="字体"
       >
         <option value=""></option>
-        <option value="SimSun, 宋体, Noto Serif CJK SC, serif">宋体</option>
-        <option value="SimHei, 黑体, Noto Sans CJK SC, sans-serif">黑体</option>
-        <option value="KaiTi, 楷体, Noto Serif CJK SC, serif">楷体</option>
-        <option value="FangSong, 仿宋, Noto Serif CJK SC, serif">仿宋</option>
-        <option value="Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif">Times New Roman</option>
-        <option value="Arial, Helvetica, Noto Sans CJK SC, sans-serif">Arial</option>
+        <option value="Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif">正文 (TNR/宋体)</option>
+        <option value="Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif">宋体</option>
+        <option value="Times New Roman, Liberation Serif, SimHei, 黑体, Noto Sans CJK SC, sans-serif">黑体</option>
+        <option value="Times New Roman, Liberation Serif, KaiTi, 楷体, Noto Serif CJK SC, serif">楷体</option>
+        <option value="Times New Roman, Liberation Serif, FangSong, 仿宋, Noto Serif CJK SC, serif">仿宋</option>
       </select>
 
       <div style={sep} />
