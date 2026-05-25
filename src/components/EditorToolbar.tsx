@@ -49,8 +49,9 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
   useEffect(() => {
     const sync = () => {
       const a = editor.getAttributes("textStyle");
-      setCurFont(a.fontFamily || "");
-      setCurSize(a.fontSize || "");
+      // When no explicit style is set, fall back to the editor defaults
+      setCurFont(a.fontFamily || "Times New Roman, Liberation Serif, serif");
+      setCurSize(a.fontSize || "12pt");
     };
     editor.on("selectionUpdate", sync);
     editor.on("transaction", sync);
