@@ -193,6 +193,28 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
       <button style={btn} onClick={onOpenTableDlg} title="插入表格">
         📊
       </button>
+      <button
+        style={{ ...btn, fontFamily: "'Latin Modern Math', 'Cambria Math', serif", fontWeight: 700, fontSize: 15 }}
+        onClick={() => {
+          let latex = "";
+          const { from, to } = editor.state.selection;
+          const selText = editor.state.doc.textBetween(from, to);
+          if (selText) {
+            latex = window.prompt("LaTeX 公式：", selText) || "";
+          } else {
+            latex = window.prompt("LaTeX 公式：", "E=mc^2") || "";
+          }
+          if (!latex) return;
+          if (latex.includes("\n")) {
+            editor.chain().focus().insertContent({ type: "mathBlock", attrs: { latex } }).run();
+          } else {
+            editor.chain().focus().insertContent({ type: "mathInline", attrs: { latex } }).run();
+          }
+        }}
+        title="插入公式 (行内输入 $...$ 亦可自动转换)"
+      >
+        ∑
+      </button>
       <button style={btn} onClick={() => editor.chain().focus().setHorizontalRule().run()} title="分割线">
         —
       </button>

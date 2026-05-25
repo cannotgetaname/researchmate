@@ -14,6 +14,8 @@ import Superscript from "@tiptap/extension-superscript";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { marked } from "marked";
+import "katex/dist/katex.min.css";
+import { MathInline, MathBlock } from "./MathExtension";
 import EditorToolbar from "./EditorToolbar";
 
 interface EditorPanelProps {
@@ -111,63 +113,82 @@ function SelectionBubble({ editor, onAddToChat }: { editor: Editor; onAddToChat:
         transform: "translate(-50%, -100%)",
         zIndex: 1001,
         display: "flex",
-        gap: 2,
-        padding: 4,
+        flexDirection: "column",
+        padding: 6,
         backgroundColor: "var(--color-surface-card)",
         border: "1px solid var(--color-hairline)",
         borderRadius: "var(--radius-md)",
         boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
         userSelect: "none",
+        minWidth: 160,
       }}
-      onMouseDown={(e) => e.preventDefault()} // prevent stealing focus
+      onMouseDown={(e) => e.preventDefault()}
     >
-      <BubbleBtn
-        onClick={() => editor.chain().focus().toggleBold().run()}
-        active={editor.isActive("bold")}
-        title="粗体"
-      ><strong>B</strong></BubbleBtn>
-      <BubbleBtn
-        onClick={() => editor.chain().focus().toggleItalic().run()}
-        active={editor.isActive("italic")}
-        title="斜体"
-        style={{ fontStyle: "italic" }}
-      >I</BubbleBtn>
-      <BubbleBtn
-        onClick={() => editor.chain().focus().toggleUnderline().run()}
-        active={editor.isActive("underline")}
-        title="下划线"
-        style={{ textDecoration: "underline" }}
-      >U</BubbleBtn>
-      <BubbleBtn
-        onClick={() => editor.chain().focus().toggleStrike().run()}
-        active={editor.isActive("strike")}
-        title="删除线"
-        style={{ textDecoration: "line-through" }}
-      >S</BubbleBtn>
-      <BubbleBtn
-        onClick={() => editor.chain().focus().toggleCode().run()}
-        active={editor.isActive("code")}
-        title="行内代码"
-        style={{ fontFamily: "monospace", fontSize: 12 }}
-      >&lt;/&gt;</BubbleBtn>
-      <BubbleBtn
-        onClick={() => editor.chain().focus().toggleHighlight().run()}
-        active={editor.isActive("highlight")}
-        title="高亮"
-      >🖌</BubbleBtn>
-
-      <div style={{ width: 1, margin: "4px 4px", backgroundColor: "var(--color-hairline)" }} />
-
-      {AI_ACTIONS.map((a) => (
+      {/* Format row */}
+      <div style={{ display: "flex", gap: 2, justifyContent: "center", paddingBottom: 6 }}>
         <BubbleBtn
+          onClick={() => editor.chain().focus().toggleBold().run()}
+          active={editor.isActive("bold")}
+          title="粗体 (Ctrl+B)"
+          style={{ fontWeight: 700, fontSize: 16, width: 32, height: 32 }}
+        >B</BubbleBtn>
+        <BubbleBtn
+          onClick={() => editor.chain().focus().toggleItalic().run()}
+          active={editor.isActive("italic")}
+          title="斜体 (Ctrl+I)"
+          style={{ fontStyle: "italic", fontSize: 16, width: 32, height: 32 }}
+        >I</BubbleBtn>
+        <BubbleBtn
+          onClick={() => editor.chain().focus().toggleUnderline().run()}
+          active={editor.isActive("underline")}
+          title="下划线 (Ctrl+U)"
+          style={{ textDecoration: "underline", fontSize: 16, width: 32, height: 32 }}
+        >U</BubbleBtn>
+        <BubbleBtn
+          onClick={() => editor.chain().focus().toggleStrike().run()}
+          active={editor.isActive("strike")}
+          title="删除线"
+          style={{ textDecoration: "line-through", fontSize: 16, width: 32, height: 32 }}
+        >S</BubbleBtn>
+        <BubbleBtn
+          onClick={() => editor.chain().focus().toggleCode().run()}
+          active={editor.isActive("code")}
+          title="行内代码"
+          style={{ fontFamily: "monospace", fontSize: 13, width: 32, height: 32 }}
+        >&lt;/&gt;</BubbleBtn>
+        <BubbleBtn
+          onClick={() => editor.chain().focus().toggleHighlight().run()}
+          active={editor.isActive("highlight")}
+          title="高亮"
+          style={{ fontSize: 15, width: 32, height: 32 }}
+        >🖌</BubbleBtn>
+      </div>
+
+      {/* Divider */}
+      <div style={{ height: 1, margin: "0 2px 4px", backgroundColor: "var(--color-hairline)" }} />
+
+      {/* AI actions — vertical list */}
+      {AI_ACTIONS.map((a) => (
+        <button
           key={a.key}
+          type="button"
           onClick={() => {
             if (a.key === "chat") onAddToChat(selectedText);
             else onAddToChat(buildAiPrompt(a.key, selectedText));
           }}
           title={a.label}
-          style={{ fontSize: 12, padding: "4px 8px" }}
-        >{a.label}</BubbleBtn>
+          style={{
+            display: "block", width: "100%", textAlign: "left",
+            padding: "7px 10px", border: "none", borderRadius: "var(--radius-sm)",
+            backgroundColor: "transparent", color: "var(--color-ink)",
+            fontFamily: "var(--font-ui)", fontSize: 14,
+            cursor: "pointer", whiteSpace: "nowrap",
+          }}
+          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = "var(--color-canvas-soft)"; }}
+          onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
+        >
+          {a.label}
+        </button>
       ))}
     </div>
   );
@@ -225,6 +246,8 @@ export default function EditorPanel({
       TextAlign.configure({ types: ["heading", "paragraph"] }),
       Subscript,
       Superscript,
+      MathInline,
+      MathBlock,
     ],
     content: "",
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
