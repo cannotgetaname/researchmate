@@ -1,4 +1,5 @@
 import type { Editor } from "@tiptap/react";
+import { nextCaptionNumber } from "./CaptionExtension";
 
 const btn: React.CSSProperties = {
   height: "28px",
@@ -48,9 +49,18 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
 
   const addImage = () => {
     const url = window.prompt("图片地址：", "https://");
-    if (url) {
-      editor.chain().focus().setImage({ src: url }).run();
-    }
+    if (!url) return;
+    const num = nextCaptionNumber(editor, "figure");
+    editor
+      .chain()
+      .focus()
+      .setImage({ src: url })
+      .insertContent({
+        type: "caption",
+        attrs: { captionType: "figure", number: num },
+        content: [{ type: "text", text: " " }],
+      })
+      .run();
   };
 
   return (

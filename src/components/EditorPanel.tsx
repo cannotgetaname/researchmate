@@ -16,6 +16,7 @@ import { save } from "@tauri-apps/plugin-dialog";
 import { marked } from "marked";
 import "katex/dist/katex.min.css";
 import { MathInline, MathBlock } from "./MathExtension";
+import { Caption, CaptionRenumber, nextCaptionNumber } from "./CaptionExtension";
 import EditorToolbar from "./EditorToolbar";
 
 interface EditorPanelProps {
@@ -296,6 +297,8 @@ export default function EditorPanel({
       Superscript,
       MathInline,
       MathBlock,
+      Caption,
+      CaptionRenumber,
     ],
     editorProps: {
       handleKeyDown: (view, event) => {
@@ -430,7 +433,17 @@ export default function EditorPanel({
 
   const insertTable = useCallback(() => {
     if (!editor) return;
-    editor.chain().focus().insertTable({ rows: tableRows, cols: tableCols, withHeaderRow: true }).run();
+    const num = nextCaptionNumber(editor, "table");
+    editor
+      .chain()
+      .focus()
+      .insertContent({
+        type: "caption",
+        attrs: { captionType: "table", number: num },
+        content: [{ type: "text", text: " " }],
+      })
+      .insertTable({ rows: tableRows, cols: tableCols, withHeaderRow: true })
+      .run();
     setShowTableDlg(false);
   }, [editor, tableRows, tableCols]);
 
@@ -476,6 +489,8 @@ export default function EditorPanel({
           .tiptap mark { background: #fff3cd; padding: 0 2px; }
           .tiptap a { color: var(--color-primary); text-decoration: underline; }
           .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: var(--color-muted-soft); pointer-events: none; height: 0; }
+          .caption { text-align: center; font-size: 14px; color: var(--color-muted); margin: 0.3em 0 1em; }
+          .caption .caption-prefix { font-weight: 600; color: var(--color-ink); }
         `}</style>
 
         <SelectionBubble editor={editor} onAddToChat={onAddToChat} />
