@@ -44,13 +44,13 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
     editor.isActive(name, attrs);
 
   // Track current font/font-size at selection
-  const [curFont, setCurFont] = useState("Times New Roman, Liberation Serif, serif");
+  const [curFont, setCurFont] = useState("Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif");
   const [curSize, setCurSize] = useState("12pt");
   useEffect(() => {
     const sync = () => {
       const a = editor.getAttributes("textStyle");
       // When no explicit style is set, fall back to the editor defaults
-      setCurFont(a.fontFamily || "Times New Roman, Liberation Serif, serif");
+      setCurFont(a.fontFamily || "Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif");
       setCurSize(a.fontSize || "12pt");
     };
     editor.on("selectionUpdate", sync);
@@ -190,12 +190,12 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         title="字体"
       >
         <option value=""></option>
-        <option value="SimSun, 宋体, serif">宋体</option>
-        <option value="SimHei, 黑体, sans-serif">黑体</option>
-        <option value="KaiTi, 楷体, serif">楷体</option>
-        <option value="FangSong, 仿宋, serif">仿宋</option>
-        <option value="Times New Roman, Liberation Serif, serif">Times New Roman</option>
-        <option value="Arial, Helvetica, sans-serif">Arial</option>
+        <option value="SimSun, 宋体, Noto Serif CJK SC, serif">宋体</option>
+        <option value="SimHei, 黑体, Noto Sans CJK SC, sans-serif">黑体</option>
+        <option value="KaiTi, 楷体, Noto Serif CJK SC, serif">楷体</option>
+        <option value="FangSong, 仿宋, Noto Serif CJK SC, serif">仿宋</option>
+        <option value="Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif">Times New Roman</option>
+        <option value="Arial, Helvetica, Noto Sans CJK SC, sans-serif">Arial</option>
       </select>
 
       <div style={sep} />
