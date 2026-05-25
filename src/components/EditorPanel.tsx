@@ -299,9 +299,10 @@ export default function EditorPanel({
     ],
     editorProps: {
       handleKeyDown: (_view, event) => {
-        // Prevent browser ContentEditable from also inserting a line break
-        // on Enter — TipTap's keymap already handles paragraph splitting.
-        if (event.key === "Enter" && !event.shiftKey) {
+        // Prevent browser ContentEditable default for these keys —
+        // ProseMirror's own keymap handles them correctly.
+        // Without this, browser and PM both act, causing double-delete / double-Enter.
+        if (event.key === "Enter" || event.key === "Backspace" || event.key === "Delete") {
           event.preventDefault();
         }
         return false; // let TipTap's keymap continue
