@@ -6,11 +6,31 @@ use crate::db::{Database, models::{Message, Session}};
 use crate::config::AppConfig;
 use crate::llm::LlmEngine;
 
-const WRITING_POLISH_PROMPT: &str = include_str!("../../prompts/writing_polish.md");
-const TRANSLATE_CN2EN_PROMPT: &str = include_str!("../../prompts/translate_cn2en.md");
+const POLISH_EN_PROMPT: &str = include_str!("../../prompts/polish_en.md");
 const POLISH_CN_PROMPT: &str = include_str!("../../prompts/polish_cn.md");
+const TRANSLATE_CN2EN_PROMPT: &str = include_str!("../../prompts/translate_cn2en.md");
 const LOGIC_CHECK_PROMPT: &str = include_str!("../../prompts/logic_check.md");
 const DE_AI_PROMPT: &str = include_str!("../../prompts/de_ai.md");
+
+/// Slash command → action mapping
+const SLASH_ACTIONS: &[(&str, &str)] = &[
+    ("polish", "polish_en"),
+    ("cn", "polish_cn"),
+    ("translate", "translate_cn2en"),
+    ("logic", "logic_check"),
+    ("deai", "de_ai"),
+];
+
+/// Stage → default action when no explicit action given
+fn stage_default_action(stage_key: &str) -> Option<&'static str> {
+    match stage_key {
+        "draft_cn" => Some("polish_cn"),
+        "translate" => Some("translate_cn2en"),
+        "polish_en" => Some("polish_en"),
+        "logic_check" => Some("logic_check"),
+        _ => None,
+    }
+}
 
 #[derive(serde::Serialize, Clone)]
 pub struct StreamChunk {
@@ -22,22 +42,57 @@ pub struct StageEvent {
     pub stage: String,  // "thinking" | "editing"
 }
 
-/// Polish text: receive text from editor, return polished version with streaming
+/// Unified AI action: auto-route based on pipeline stage, or use explicit action.
+/// If `action` is None, looks up the current in-progress stage and maps to a default action.
+/// If `action` starts with '/', it's treated as a slash command.
 #[command]
-pub async fn polish_text(
+pub async fn ai_action(
+    action: Option<String>,
     text: String,
-    style: Option<String>,
+    project_id: Option<String>,
     app_handle: tauri::AppHandle,
     db: State<'_, Arc<Database>>,
     config: State<'_, Arc<RwLock<AppConfig>>>,
 ) -> Result<String, String> {
-    let style_instruction = match style.as_deref() {
-        Some("academic") => "\n\n请使用严谨学术风格润色，提升正式度与精确度。",
-        Some("concise") => "\n\n请使用精简风格改写，适合 PPT 或报告摘要。",
-        _ => "\n\n请进行基础语法与清晰度润色。",
+    // Resolve action: explicit > slash command > stage default > error
+    let resolved = if let Some(ref a) = action {
+        // Check if it's a slash command like "/polish"
+        if let Some(cmd) = a.strip_prefix('/') {
+            let cmd_lower = cmd.trim().to_lowercase();
+            SLASH_ACTIONS
+                .iter()
+                .find(|(k, _)| *k == cmd_lower)
+                .map(|(_, v)| v.to_string())
+                .ok_or_else(|| format!("未知命令：/{}。可用：/polish /cn /translate /logic /deai", cmd))?
+        } else {
+            a.clone()
+        }
+    } else if let Some(ref pid) = project_id {
+        // Auto-route: find current in-progress stage
+        let conn = db.conn.lock().map_err(|e| e.to_string())?;
+        let mut stmt = conn
+            .prepare("SELECT stage_key FROM writing_stage WHERE project_id = ?1 AND status = 'in_progress' ORDER BY sort_order LIMIT 1")
+            .map_err(|e| e.to_string())?;
+        let stage_key: Option<String> = stmt
+            .query_row(rusqlite::params![pid], |row| row.get(0))
+            .ok();
+        match stage_key.as_deref().and_then(stage_default_action) {
+            Some(a) => a.to_string(),
+            None => return Err("请先在「管理→写作进度」中将某个阶段设为「进行中」，或使用斜杠命令指定操作（/polish /cn /translate /logic /deai）".to_string()),
+        }
+    } else {
+        return Err("请指定操作或项目ID".to_string());
     };
 
-    let system_prompt = format!("{}{}", WRITING_POLISH_PROMPT, style_instruction);
+    // Pick prompt
+    let prompt = match resolved.as_str() {
+        "polish_en" => POLISH_EN_PROMPT,
+        "polish_cn" => POLISH_CN_PROMPT,
+        "translate_cn2en" => TRANSLATE_CN2EN_PROMPT,
+        "logic_check" => LOGIC_CHECK_PROMPT,
+        "de_ai" => DE_AI_PROMPT,
+        _ => return Err(format!("未知操作：{}", resolved)),
+    };
 
     let (engine, key_empty) = {
         let cfg = config.read().unwrap();
@@ -56,7 +111,7 @@ pub async fn polish_text(
 
     let result = engine
         .chat_stream_thinking(
-            &system_prompt,
+            prompt,
             &[],
             &text,
             move |delta| {
@@ -327,56 +382,6 @@ pub async fn get_messages(
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| e.to_string())?;
     Ok(messages)
-}
-
-// ── AI Actions (translate / polish_cn / logic_check / de_ai) ──
-
-/// Generic AI action: translate / polish_cn / logic_check / de_ai
-#[command]
-pub async fn ai_action(
-    action: String,
-    text: String,
-    app_handle: tauri::AppHandle,
-    config: State<'_, Arc<RwLock<AppConfig>>>,
-) -> Result<String, String> {
-    let prompt = match action.as_str() {
-        "translate_cn2en" => TRANSLATE_CN2EN_PROMPT,
-        "polish_cn" => POLISH_CN_PROMPT,
-        "logic_check" => LOGIC_CHECK_PROMPT,
-        "de_ai" => DE_AI_PROMPT,
-        _ => return Err(format!("未知的 AI 操作：{}", action)),
-    };
-
-    let (engine, key_empty) = {
-        let cfg = config.read().unwrap();
-        let model = cfg.model_for("writing").to_string();
-        let engine = LlmEngine::new(&cfg, &model);
-        let key_empty = cfg.deepseek_api_key.is_empty();
-        (engine, key_empty)
-    };
-
-    if key_empty {
-        return Err("请先在设置中配置 DeepSeek API Key。".to_string());
-    }
-
-    let handle = app_handle.clone();
-    let handle2 = app_handle.clone();
-
-    let result = engine
-        .chat_stream_thinking(
-            prompt,
-            &[],
-            &text,
-            move |delta| {
-                let _ = handle.emit("polish-stream", StreamChunk { delta });
-            },
-            move |stage| {
-                let _ = handle2.emit("polish-stage", StageEvent { stage: stage.into() });
-            },
-        )
-        .await?;
-
-    Ok(result)
 }
 
 // ── Writing Pipeline Stage Management ──

@@ -250,15 +250,10 @@ export default function App() {
                 activeTab={mgmtTab}
                 onStageChange={setActiveStageLabel}
                 onAiAction={(action) => {
-                  // Route AI actions to ChatPanel
-                  if (action === "export_docx") {
-                    // handled by EditorToolbar, no-op here
-                  } else if (action === "polish_cn" || action === "translate_cn2en" || action === "logic_check" || action === "de_ai") {
-                    // Send to ChatPanel with action prefix
-                    setActiveModule("write");
-                    // Use fillText to trigger AI action in ChatPanel
-                    setFillText(`__ACTION__${action}__`);
-                  }
+                  if (action === "export_docx") return; // handled by EditorToolbar
+                  // Switch to writing tab and trigger AI action
+                  setActiveModule("write");
+                  setFillText(`__ACTION__${action}__`);
                 }}
               />
             )}

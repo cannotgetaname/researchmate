@@ -34,7 +34,6 @@ pub fn run() {
         .manage(cfg)
         .manage(app_dir)
         .invoke_handler(tauri::generate_handler![
-            commands::writing::polish_text,
             commands::writing::create_session,
             commands::writing::list_sessions,
             commands::writing::save_message,

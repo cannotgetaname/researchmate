@@ -31,7 +31,9 @@ interface EditorPanelProps {
 
 const AI_ACTIONS = [
   { label: "添加到对话框", key: "chat" },
-  { label: "润色这段文字", key: "polish" },
+  { label: "AI 润色", key: "polish" },
+  { label: "中译英", key: "translate" },
+  { label: "逻辑检查", key: "logic" },
   { label: "解释这段内容", key: "explain" },
   { label: "续写", key: "continue" },
   { label: "检查引用", key: "citation" },
@@ -39,7 +41,11 @@ const AI_ACTIONS = [
 
 function buildAiPrompt(key: string, text: string): string {
   switch (key) {
-    case "polish": return `请帮我润色以下文字，使其更学术化：\n\n${text}`;
+    // Auto-route via pipeline stage (or default to polish)
+    case "polish": return `__ACTION__auto__${text}`;
+    // Explicit actions
+    case "translate": return `__ACTION__translate_cn2en__${text}`;
+    case "logic": return `__ACTION__logic_check__${text}`;
     case "explain": return `请帮我解释以下内容：\n\n${text}`;
     case "continue": return `请基于以下文字续写，保持一致的学术风格：\n\n${text}`;
     case "citation": return `__CITE__${text}`;

@@ -37,10 +37,21 @@ const MODULES = [
   { key: "version", label: "版本" },
 ];
 
+const SLASH_COMMANDS = [
+  { cmd: "/polish", desc: "英文润色", action: "polish_en" },
+  { cmd: "/cn", desc: "中文润色", action: "polish_cn" },
+  { cmd: "/translate", desc: "中译英", action: "translate_cn2en" },
+  { cmd: "/logic", desc: "逻辑检查", action: "logic_check" },
+  { cmd: "/deai", desc: "去AI味", action: "de_ai" },
+];
+
 export default function ChatPanel({
   activeModule, onModuleChange, fillText, onFillConsumed, projectId, onInsertCitation,
 }: ChatPanelProps) {
   const [input, setInput] = useState("");
+  const [showSlashMenu, setShowSlashMenu] = useState(false);
+  const [slashFilter, setSlashFilter] = useState("");
+  const [activeStageLabel, setActiveStageLabel] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [kbs, setKbs] = useState<{id: string; name: string}[]>([]);
@@ -48,7 +59,7 @@ export default function ChatPanel({
   const inputRef = useRef<HTMLInputElement>(null);
 
   // Each session has its own chat state
-  const { messages, sendMessage, sendKnowledgeQuery, deleteMessage, isLoading, aiStage } = useStreamChat(activeSessionId);
+  const { messages, sendMessage, sendAiAction, sendKnowledgeQuery, deleteMessage, isLoading, aiStage } = useStreamChat(activeSessionId);
 
   const stageClass = aiStage === "editing" ? "editing" : aiStage === "done" ? "done" : "thinking";
   const stageLabel = aiStage === "editing" ? "写作中" : aiStage === "done" ? "完成" : "思考中";
@@ -61,6 +72,27 @@ export default function ChatPanel({
     } catch {}
   };
   useEffect(() => { loadKbs(); }, []);
+
+  // Poll current pipeline stage for context hint
+  useEffect(() => {
+    let active = true;
+    const poll = async () => {
+      try {
+        const stages = await invoke<{stage_key: string; status: string}[]>("get_stages", { projectId });
+        if (!active) return;
+        const cur = stages.find((s) => s.status === "in_progress");
+        const labels: Record<string, string> = {
+          draft_cn: "✍️ 中文初稿", translate: "🌐 中译英", polish_en: "✨ 英文润色",
+          logic_check: "🔍 逻辑检查", lit_review: "📚 文献调研", experiment: "🔬 实验设计",
+          formatting: "📄 投稿格式",
+        };
+        setActiveStageLabel(cur ? (labels[cur.stage_key] || cur.stage_key) : null);
+      } catch {}
+    };
+    poll();
+    const interval = setInterval(poll, 5000);
+    return () => { active = false; clearInterval(interval); };
+  }, [projectId]);
 
   // Load sessions for this project+module
   const loadSessions = useCallback(async () => {
@@ -126,15 +158,32 @@ export default function ChatPanel({
   // Citation suggestions (rendered as cards, separate from messages)
   const [citationResults, setCitationResults] = useState<CitationSuggestion[] | null>(null);
 
-  // When editor sends text via right-click, auto-fill the input
+  // When editor sends text via right-click or pipeline trigger
   useEffect(() => {
     if (!fillText) return;
-    // Detect citation check trigger
+    // Citation check trigger
     if (fillText.startsWith("__CITE__")) {
       const citeText = fillText.slice(8);
       onFillConsumed();
       handleCitationCheck(citeText);
       return;
+    }
+    // Pipeline AI action trigger: __ACTION__xxx__text
+    if (fillText.startsWith("__ACTION__")) {
+      const rest = fillText.slice(10); // after __ACTION__
+      const idx = rest.indexOf("__");
+      if (idx > 0) {
+        const action = rest.slice(0, idx);
+        const text = rest.slice(idx + 2);
+        onFillConsumed();
+        if (action === "auto") {
+          // Auto-route based on pipeline stage
+          sendMessage(text, projectId);
+        } else {
+          sendAiAction(action, text, projectId);
+        }
+        return;
+      }
     }
     setInput(fillText);
     onFillConsumed();
@@ -175,11 +224,26 @@ export default function ChatPanel({
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed || isLoading) return;
-    // Route: if KBs are selected, use tool-calling agent; otherwise stream polish
+    // Slash command: /polish some text
+    if (trimmed.startsWith("/")) {
+      const spaceIdx = trimmed.indexOf(" ");
+      const cmd = spaceIdx > 0 ? trimmed.slice(0, spaceIdx) : trimmed;
+      const text = spaceIdx > 0 ? trimmed.slice(spaceIdx + 1) : "";
+      const match = SLASH_COMMANDS.find((c) => c.cmd === cmd);
+      if (match) {
+        sendAiAction(match.action, text || trimmed, projectId);
+      } else {
+        sendMessage(trimmed, projectId);
+      }
+      setInput("");
+      setShowSlashMenu(false);
+      return;
+    }
+    // Route: if KBs are selected, use tool-calling agent; otherwise auto-route via ai_action
     if (selectedKbIds.length > 0) {
       sendKnowledgeQuery(trimmed, selectedKbIds, projectId);
     } else {
-      sendMessage(trimmed);
+      sendMessage(trimmed, projectId);
     }
     setInput("");
   };
@@ -187,7 +251,21 @@ export default function ChatPanel({
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
+      if (showSlashMenu) setShowSlashMenu(false);
       handleSend();
+    }
+    if (e.key === "Escape") setShowSlashMenu(false);
+  };
+
+  const handleInputChange = (val: string) => {
+    setInput(val);
+    if (val.startsWith("/")) {
+      const spaceIdx = val.indexOf(" ");
+      const prefix = spaceIdx > 0 ? val.slice(0, spaceIdx) : val;
+      setShowSlashMenu(true);
+      setSlashFilter(prefix);
+    } else {
+      setShowSlashMenu(false);
     }
   };
 
@@ -419,10 +497,46 @@ export default function ChatPanel({
       )}
 
       {/* Input */}
-      <div className="chat-input-area">
+      <div className="chat-input-area" style={{ position: "relative" }}>
+        {activeStageLabel && (
+          <div style={{
+            position: "absolute", top: -26, left: 0, fontSize: 11, color: "#3b82f6",
+            fontWeight: 500, padding: "2px 8px", borderRadius: "var(--radius-pill)",
+            backgroundColor: "rgba(59,130,246,0.06)",
+          }}>
+            {activeStageLabel} — 自动路由中
+          </div>
+        )}
+        {/* Slash command dropdown */}
+        {showSlashMenu && (
+          <div style={{
+            position: "absolute", bottom: "100%", left: 0, right: 0,
+            marginBottom: 4, backgroundColor: "var(--color-surface-card)",
+            border: "1px solid var(--color-hairline)", borderRadius: "var(--radius-md)",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.08)", zIndex: 10,
+            padding: "var(--space-xs) 0", maxHeight: 200, overflowY: "auto",
+          }}>
+            {SLASH_COMMANDS.filter((c) => c.cmd.startsWith(slashFilter)).map((c) => (
+              <div
+                key={c.cmd}
+                style={{
+                  padding: "6px var(--space-base)", cursor: "pointer", fontSize: 13,
+                  display: "flex", justifyContent: "space-between",
+                  color: "var(--color-ink)",
+                }}
+                onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = "var(--color-canvas-soft)"; }}
+                onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
+                onMouseDown={(e) => { e.preventDefault(); setInput(c.cmd + " "); setShowSlashMenu(false); inputRef.current?.focus(); }}
+              >
+                <span style={{ fontWeight: 600 }}>{c.cmd}</span>
+                <span style={{ color: "var(--color-muted)" }}>{c.desc}</span>
+              </div>
+            ))}
+          </div>
+        )}
         <input ref={inputRef} type="text" value={input}
-          onChange={(e) => setInput(e.target.value)} onKeyDown={handleKeyDown}
-          placeholder="输入问题，或 @write @data @lit..." disabled={isLoading} />
+          onChange={(e) => handleInputChange(e.target.value)} onKeyDown={handleKeyDown}
+          placeholder={`输入问题，或 /polish /translate /logic...`} disabled={isLoading} />
         <button onClick={handleSend} disabled={isLoading || !input.trim()}>
           {isLoading ? "..." : "发送"}
         </button>

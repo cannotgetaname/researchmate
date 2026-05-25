@@ -136,11 +136,6 @@ export default function WritingPipeline({ projectId, onAiAction, onStageChange, 
   };
 
   const handleAction = (action: string, _stageKey: string) => {
-    if (action === "export_docx" || action === "upload_pdf" || action === "kb_search") {
-      onAiAction?.(action);
-      return;
-    }
-    // For text-based AI actions, pass action name upstream
     onAiAction?.(action);
   };
 
