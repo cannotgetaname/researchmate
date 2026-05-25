@@ -113,134 +113,83 @@ function migrateLatexInDoc(editor: Editor) {
   editor.view.dispatch(tr);
 }
 
-// ─────────────────── SelectionBubble ───────────────────
+// ─────────────────── SelectionBubble (Word-style mini toolbar) ───────────────────
 
-function SelectionBubble({ editor, onAddToChat }: { editor: Editor; onAddToChat: (t: string) => void }) {
+function SelectionBubble({ editor }: { editor: Editor }) {
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     const update = () => {
       const { from, to, empty } = editor.state.selection;
-      if (empty || from === to) {
-        setPos(null);
-        return;
-      }
+      if (empty || from === to) { setPos(null); return; }
       try {
         const start = editor.view.coordsAtPos(from);
         const end = editor.view.coordsAtPos(to);
         const x = (start.left + end.right) / 2;
-        const y = start.top - 6;
-        if (x === 0 && y === 0) return; // offscreen / not rendered
+        const y = start.top - 8;
+        if (x === 0 && y === 0) return;
         setPos({ x, y });
-      } catch {
-        setPos(null);
-      }
+      } catch { setPos(null); }
     };
-
     const hide = () => setPos(null);
-
     editor.on("selectionUpdate", update);
     editor.on("blur", hide);
-    return () => {
-      editor.off("selectionUpdate", update);
-      editor.off("blur", hide);
-    };
+    return () => { editor.off("selectionUpdate", update); editor.off("blur", hide); };
   }, [editor]);
 
   if (!pos) return null;
 
-  const selectedText = (() => {
-    const { from, to } = editor.state.selection;
-    return editor.state.doc.textBetween(from, to);
-  })();
-
   return (
     <div
+      className="selection-bubble"
       style={{
-        position: "fixed",
-        left: pos.x,
-        top: pos.y,
-        transform: "translate(-50%, -100%)",
+        position: "fixed", left: pos.x, top: pos.y, transform: "translate(-50%, -100%)",
         zIndex: 1001,
-        display: "flex",
-        flexDirection: "column",
-        padding: 6,
-        backgroundColor: "var(--color-surface-card)",
-        border: "1px solid var(--color-hairline)",
-        borderRadius: "var(--radius-md)",
-        boxShadow: "0 4px 14px rgba(0,0,0,0.12)",
+        display: "flex", gap: 1, padding: 3,
+        backgroundColor: "rgba(255,255,255,0.92)",
+        border: "1px solid rgba(0,0,0,0.08)",
+        borderRadius: 4,
+        boxShadow: "0 2px 6px rgba(0,0,0,0.08)",
         userSelect: "none",
-        minWidth: 160,
+        opacity: 0.7,
+        transition: "opacity 0.15s",
       }}
+      onMouseEnter={(e) => { (e.target as HTMLElement).closest<HTMLElement>(".selection-bubble")?.style.setProperty("opacity", "1"); }}
+      onMouseLeave={(e) => { (e.target as HTMLElement).closest<HTMLElement>(".selection-bubble")?.style.setProperty("opacity", "0.7"); }}
       onMouseDown={(e) => e.preventDefault()}
     >
-      {/* Format row */}
-      <div style={{ display: "flex", gap: 2, justifyContent: "center", paddingBottom: 6 }}>
-        <BubbleBtn
-          onClick={() => editor.chain().focus().toggleBold().run()}
-          active={editor.isActive("bold")}
-          title="粗体 (Ctrl+B)"
-          style={{ fontWeight: 700, fontSize: 16, width: 32, height: 32 }}
-        >B</BubbleBtn>
-        <BubbleBtn
-          onClick={() => editor.chain().focus().toggleItalic().run()}
-          active={editor.isActive("italic")}
-          title="斜体 (Ctrl+I)"
-          style={{ fontStyle: "italic", fontSize: 16, width: 32, height: 32 }}
-        >I</BubbleBtn>
-        <BubbleBtn
-          onClick={() => editor.chain().focus().toggleUnderline().run()}
-          active={editor.isActive("underline")}
-          title="下划线 (Ctrl+U)"
-          style={{ textDecoration: "underline", fontSize: 16, width: 32, height: 32 }}
-        >U</BubbleBtn>
-        <BubbleBtn
-          onClick={() => editor.chain().focus().toggleStrike().run()}
-          active={editor.isActive("strike")}
-          title="删除线"
-          style={{ textDecoration: "line-through", fontSize: 16, width: 32, height: 32 }}
-        >S</BubbleBtn>
-        <BubbleBtn
-          onClick={() => editor.chain().focus().toggleCode().run()}
-          active={editor.isActive("code")}
-          title="行内代码"
-          style={{ fontFamily: "monospace", fontSize: 13, width: 32, height: 32 }}
-        >&lt;/&gt;</BubbleBtn>
-        <BubbleBtn
-          onClick={() => editor.chain().focus().toggleHighlight().run()}
-          active={editor.isActive("highlight")}
-          title="高亮"
-          style={{ fontSize: 15, width: 32, height: 32 }}
-        >🖌</BubbleBtn>
-      </div>
-
-      {/* Divider */}
-      <div style={{ height: 1, margin: "0 2px 4px", backgroundColor: "var(--color-hairline)" }} />
-
-      {/* AI actions — vertical list */}
-      {AI_ACTIONS.map((a) => (
-        <button
-          key={a.key}
-          type="button"
-          onClick={() => {
-            if (a.key === "chat") onAddToChat(selectedText);
-            else onAddToChat(buildAiPrompt(a.key, selectedText));
-          }}
-          title={a.label}
-          style={{
-            display: "block", width: "100%", textAlign: "left",
-            padding: "7px 10px", border: "none", borderRadius: "var(--radius-sm)",
-            backgroundColor: "transparent", color: "var(--color-ink)",
-            fontFamily: "var(--font-ui)", fontSize: 14,
-            cursor: "pointer", whiteSpace: "nowrap",
-          }}
-          onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = "var(--color-canvas-soft)"; }}
-          onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
-        >
-          {a.label}
-        </button>
-      ))}
+      <MiniBtn editor={editor} cmd="toggleBold" check="bold" title="粗体 (Ctrl+B)"><strong>B</strong></MiniBtn>
+      <MiniBtn editor={editor} cmd="toggleItalic" check="italic" title="斜体 (Ctrl+I)" style={{ fontStyle: "italic" }}>I</MiniBtn>
+      <MiniBtn editor={editor} cmd="toggleUnderline" check="underline" title="下划线 (Ctrl+U)" style={{ textDecoration: "underline" }}>U</MiniBtn>
+      <MiniBtn editor={editor} cmd="toggleStrike" check="strike" title="删除线" style={{ textDecoration: "line-through" }}>S</MiniBtn>
+      <div style={{ width: 1, margin: "3px 2px", backgroundColor: "rgba(0,0,0,0.1)" }} />
+      <MiniBtn editor={editor} cmd="toggleCode" check="code" title="代码" style={{ fontFamily: "monospace" }}>&lt;/&gt;</MiniBtn>
+      <MiniBtn editor={editor} cmd="toggleHighlight" check="highlight" title="高亮">🖌</MiniBtn>
     </div>
+  );
+}
+
+function MiniBtn({ editor, cmd, check, title, style, children }: {
+  editor: Editor; cmd: string; check: string; title: string; style?: React.CSSProperties; children: React.ReactNode;
+}) {
+  const active = editor.isActive(check);
+  return (
+    <button
+      type="button"
+      onClick={() => (editor.chain().focus() as any)[cmd]().run()}
+      title={title}
+      style={{
+        height: 24, minWidth: 24, padding: "0 5px", border: "none", borderRadius: 2,
+        backgroundColor: active ? "rgba(0,0,0,0.08)" : "transparent",
+        color: active ? "#222" : "#555",
+        fontFamily: "var(--font-ui)", fontSize: 13,
+        fontWeight: active ? 600 : 400,
+        cursor: "pointer", whiteSpace: "nowrap",
+        ...style,
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -496,11 +445,11 @@ export default function EditorPanel({
           .caption .caption-prefix { font-weight: 600; color: var(--color-ink); }
         `}</style>
 
-        <SelectionBubble editor={editor} onAddToChat={onAddToChat} />
+        <SelectionBubble editor={editor} />
         <EditorContent editor={editor} />
       </div>
 
-      {/* Context menu */}
+      {/* Context menu (Word-style: editing + AI actions) */}
       {ctxMenu.visible && (
         <div
           style={{
@@ -513,19 +462,14 @@ export default function EditorPanel({
           }}
           onClick={() => setCtxMenu((p) => ({ ...p, visible: false }))}
         >
+          {/* Editing actions */}
+          <CtxItem onClick={() => { navigator.clipboard.writeText(ctxMenu.text); setCtxMenu(p => ({...p, visible: false})); }}>复制</CtxItem>
+          <CtxItem onClick={() => { editor.commands.deleteSelection(); setCtxMenu(p => ({...p, visible: false})); }}>剪切</CtxItem>
+          <CtxItem onClick={async () => { try { const t = await navigator.clipboard.readText(); editor.commands.insertContent(t); } catch {} setCtxMenu(p => ({...p, visible: false})); }}>粘贴</CtxItem>
+          <div style={{ height: 1, margin: "4px 0", backgroundColor: "var(--color-hairline)" }} />
+          {/* AI actions */}
           {AI_ACTIONS.map((a) => (
-            <div
-              key={a.key}
-              style={{
-                padding: "8px var(--space-base)", cursor: "pointer", fontSize: 13,
-                color: "var(--color-ink)", transition: "background-color 0.1s",
-              }}
-              onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = "var(--color-canvas-soft)"; }}
-              onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
-              onClick={(e) => { e.stopPropagation(); handleCtxAction(a.key); }}
-            >
-              {a.label}
-            </div>
+            <CtxItem key={a.key} onClick={() => handleCtxAction(a.key)}>{a.label}</CtxItem>
           ))}
           {!ctxMenu.text.trim() && (
             <div style={{ padding: "8px var(--space-base)", fontSize: 12, color: "var(--color-muted-soft)", borderTop: "1px solid var(--color-hairline)", marginTop: 4 }}>
@@ -565,35 +509,19 @@ export default function EditorPanel({
   );
 }
 
-// ── Tiny helpers ──
-
-function BubbleBtn({
-  onClick, active, title, style, children,
-}: {
-  onClick: () => void;
-  active?: boolean;
-  title: string;
-  style?: React.CSSProperties;
-  children: React.ReactNode;
-}) {
+function CtxItem({ onClick, children }: { onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
+    <div
       style={{
-        height: 28, padding: "0 6px", border: "none",
-        borderRadius: "var(--radius-sm)",
-        backgroundColor: active ? "var(--color-canvas-soft)" : "transparent",
-        color: active ? "var(--color-primary)" : "var(--color-ink)",
-        fontFamily: "var(--font-ui)", fontSize: 13,
-        fontWeight: active ? 600 : 400,
-        cursor: "pointer", whiteSpace: "nowrap",
-        ...style,
+        padding: "8px var(--space-base)", cursor: "pointer", fontSize: 13,
+        color: "var(--color-ink)", transition: "background-color 0.1s",
       }}
+      onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = "var(--color-canvas-soft)"; }}
+      onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
     >
       {children}
-    </button>
+    </div>
   );
 }
 
