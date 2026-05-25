@@ -58,16 +58,14 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
     const filePath = Array.isArray(selected) ? selected[0] : selected;
     const dataUrl: string = await invoke("read_image_as_data_url", { path: filePath });
     const num = nextCaptionNumber(editor, "figure");
-    // Insert image first, then caption — do NOT chain, or setImage may be dropped
-    editor.commands.setImage({ src: dataUrl });
+    // Insert both image and caption in one transaction to avoid ordering issues
     editor
       .chain()
       .focus()
-      .insertContent({
-        type: "caption",
-        attrs: { captionType: "figure", number: num },
-        content: [{ type: "text", text: " " }],
-      })
+      .insertContent([
+        { type: "image", attrs: { src: dataUrl } },
+        { type: "caption", attrs: { captionType: "figure", number: num }, content: [{ type: "text", text: " " }] },
+      ])
       .run();
   };
 
