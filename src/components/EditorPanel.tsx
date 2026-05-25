@@ -63,6 +63,54 @@ function looksLikeHtml(s: string): boolean {
   return /^\s*</.test(s);
 }
 
+/** Walk the doc after load and convert raw $...$ / $$...$$ text into math nodes. */
+function migrateLatexInDoc(editor: Editor) {
+  const { doc } = editor.state;
+  const replacements: { from: number; to: number; node: ReturnType<typeof editor.schema.nodes.mathBlock.create> }[] = [];
+
+  doc.descendants((node, pos) => {
+    if (!node.isText) return;
+    const text = node.text || "";
+    if (!text.includes("$")) return;
+
+    // Block math: $$...$$
+    const blockRe = /\$\$([^$]+)\$\$/g;
+    let m: RegExpExecArray | null;
+    while ((m = blockRe.exec(text)) !== null) {
+      replacements.push({
+        from: pos + m.index,
+        to: pos + m.index + m[0].length,
+        node: editor.schema.nodes.mathBlock.create({ latex: m[1].trim() }),
+      });
+    }
+
+    // Inline math: $...$ (but not $$)
+    const inlineRe = /(?<!\$)\$(?!\$)([^$]+)\$(?!\d)/g;
+    while ((m = inlineRe.exec(text)) !== null) {
+      // Don't replace if this range overlaps with a block replacement
+      const from = pos + m.index;
+      const to = pos + m.index + m[0].length;
+      if (!replacements.some((r) => r.from <= from && r.to >= to)) {
+        replacements.push({
+          from,
+          to,
+          node: editor.schema.nodes.mathInline.create({ latex: m[1] }),
+        });
+      }
+    }
+  });
+
+  if (replacements.length === 0) return;
+
+  // Apply from end to start so positions stay valid
+  replacements.sort((a, b) => b.from - a.from);
+  const tr = editor.state.tr;
+  for (const r of replacements) {
+    tr.replaceRangeWith(r.from, r.to, r.node);
+  }
+  editor.view.dispatch(tr);
+}
+
 // ─────────────────── SelectionBubble ───────────────────
 
 function SelectionBubble({ editor, onAddToChat }: { editor: Editor; onAddToChat: (t: string) => void }) {
@@ -312,6 +360,8 @@ export default function EditorPanel({
       try {
         const draft: string = await invoke("load_draft", { projectId });
         editor.commands.setContent(draft ? (looksLikeHtml(draft) ? draft : markdownToHtml(draft)) : "");
+        // Convert raw $...$ patterns in loaded content to math nodes
+        setTimeout(() => migrateLatexInDoc(editor), 0);
       } catch {
         editor.commands.setContent("");
       }
