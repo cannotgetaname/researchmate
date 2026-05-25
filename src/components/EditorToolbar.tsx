@@ -139,11 +139,7 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         }}
         value={editor.getAttributes("textStyle").fontSize || ""}
         onChange={(e) => {
-          const v = e.target.value;
-          console.log("[fontSize] onChange →", v);
-          const result = editor.chain().focus().setMark("textStyle", { fontSize: v || null }).run();
-          console.log("[fontSize] chain result:", result);
-          console.log("[fontSize] textStyle attrs after:", editor.getAttributes("textStyle"));
+          editor.chain().focus().setMark("textStyle", { fontSize: e.target.value || null }).run();
         }}
         title="字号"
       >
@@ -156,6 +152,29 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         <option value="16pt">三号 16</option>
         <option value="18pt">小二 18</option>
         <option value="22pt">二号 22</option>
+      </select>
+
+      {/* Font family */}
+      <select
+        style={{
+          height: "28px", padding: "0 4px", border: "1px solid var(--color-hairline)",
+          borderRadius: "var(--radius-sm)", fontFamily: "var(--font-ui)", fontSize: "12px",
+          backgroundColor: "var(--color-canvas)", color: "var(--color-muted)",
+          cursor: "pointer", outline: "none", maxWidth: "90px",
+        }}
+        value={editor.getAttributes("textStyle").fontFamily || ""}
+        onChange={(e) => {
+          editor.chain().focus().setMark("textStyle", { fontFamily: e.target.value || null }).run();
+        }}
+        title="字体"
+      >
+        <option value="">字体</option>
+        <option value="SimSun, 宋体, serif">宋体</option>
+        <option value="SimHei, 黑体, sans-serif">黑体</option>
+        <option value="KaiTi, 楷体, serif">楷体</option>
+        <option value="FangSong, 仿宋, serif">仿宋</option>
+        <option value="Times New Roman, Liberation Serif, serif">Times New Roman</option>
+        <option value="Arial, Helvetica, sans-serif">Arial</option>
       </select>
 
       <div style={sep} />

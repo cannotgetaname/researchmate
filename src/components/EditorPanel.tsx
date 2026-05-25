@@ -15,7 +15,7 @@ import { marked } from "marked";
 import "katex/dist/katex.min.css";
 import { MathInline, MathBlock } from "./MathExtension";
 import { Caption, CaptionRenumber, nextCaptionNumber } from "./CaptionExtension";
-import { FontSize, TextStyle } from "@tiptap/extension-text-style";
+import { FontSize, FontFamily, TextStyle } from "@tiptap/extension-text-style";
 import EditorToolbar from "./EditorToolbar";
 
 interface EditorPanelProps {
@@ -247,6 +247,7 @@ export default function EditorPanel({
       Caption,
       CaptionRenumber,
       FontSize,
+      FontFamily,
     ],
     editorProps: {
       handleKeyDown: (view, event) => {
@@ -271,12 +272,6 @@ export default function EditorPanel({
     onSelectionUpdate: ({ editor }) => {
       const sel = editor.state.selection;
       onSelectionChange(sel.empty ? "" : editor.state.doc.textBetween(sel.from, sel.to));
-    },
-    onCreate: ({ editor }) => {
-      console.log("[fontSize debug] editor created");
-      console.log("[fontSize debug] schema marks:", Object.keys(editor.schema.marks));
-      console.log("[fontSize debug] textStyle mark:", !!editor.schema.marks.textStyle);
-      console.log("[fontSize debug] FontSize extension registered:", editor.extensionManager.extensions.some((e: any) => e.name === "fontSize"));
     },
   });
 
