@@ -162,7 +162,8 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         }}
         title="字号"
       >
-        <option value="">字号</option>
+        <option value=""></option>
+
         <option value="9pt">小五 9</option>
         <option value="10.5pt">五号 10.5</option>
         <option value="12pt">小四 12</option>
@@ -187,7 +188,7 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         }}
         title="字体"
       >
-        <option value="">字体</option>
+        <option value=""></option>
         <option value="SimSun, 宋体, serif">宋体</option>
         <option value="SimHei, 黑体, sans-serif">黑体</option>
         <option value="KaiTi, 楷体, serif">楷体</option>
