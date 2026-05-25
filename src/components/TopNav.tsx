@@ -10,12 +10,13 @@ interface TopNavProps {
   onOpenSettings: () => void;
   onOpenAbout: () => void;
   updateAvailable?: boolean;
+  activeStage?: string | null;
 }
 
 export default function TopNav({
   projects, activeProjectId, onSwitchProject,
   onCreateProject, onOpenSettings, onOpenAbout,
-  updateAvailable,
+  updateAvailable, activeStage,
 }: TopNavProps) {
   return (
     <div className="topnav">
@@ -44,6 +45,17 @@ export default function TopNav({
         >
           +
         </button>
+        {activeStage && (
+          <span style={{
+            fontSize: 12, fontWeight: 500,
+            color: "#3b82f6",
+            backgroundColor: "rgba(59,130,246,0.08)",
+            padding: "2px 10px", borderRadius: "var(--radius-pill)",
+            marginLeft: "var(--space-sm)",
+          }}>
+            {activeStage}
+          </span>
+        )}
       </div>
       <div className="topnav-right">
         {updateAvailable && (

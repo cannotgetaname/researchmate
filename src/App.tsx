@@ -65,6 +65,7 @@ export default function App() {
   const [saveMsg, setSaveMsg] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [mgmtTab, setMgmtTab] = useState("progress"); // 管理子标签
+  const [activeStageLabel, setActiveStageLabel] = useState<string | null>(null);
 
   // Check for updates on startup
   useEffect(() => {
@@ -188,6 +189,7 @@ export default function App() {
         onCreateProject={() => setShowNewProject(true)}
         onOpenSettings={handleOpenSettings} onOpenAbout={() => setShowAbout(true)}
         updateAvailable={updateAvailable}
+        activeStage={activeStageLabel}
       />
       <div className="app-main">
         <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} projectId={activeProject} skipAutoSaveRef={viewingHistoryRef} citationInsert={citationInsert} onCitationConsumed={() => setCitationInsert("")} />
@@ -246,6 +248,7 @@ export default function App() {
               <WritingPipeline
                 projectId={activeProject}
                 activeTab={mgmtTab}
+                onStageChange={setActiveStageLabel}
                 onAiAction={(action) => {
                   // Route AI actions to ChatPanel
                   if (action === "export_docx") {

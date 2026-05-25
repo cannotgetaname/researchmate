@@ -71,10 +71,11 @@ function stageActions(stageKey: string): { label: string; action: string }[] {
 interface WritingPipelineProps {
   projectId: string;
   onAiAction?: (action: string) => void;
+  onStageChange?: (stageLabel: string | null) => void;
   activeTab: string;
 }
 
-export default function WritingPipeline({ projectId, onAiAction, activeTab }: WritingPipelineProps) {
+export default function WritingPipeline({ projectId, onAiAction, onStageChange, activeTab }: WritingPipelineProps) {
   const [stages, setStages] = useState<Stage[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -97,6 +98,17 @@ export default function WritingPipeline({ projectId, onAiAction, activeTab }: Wr
     setLoading(true);
     loadStages();
   }, [loadStages]);
+
+  // Report current active stage upward
+  useEffect(() => {
+    const active = stages.find((s) => s.status === "in_progress");
+    if (active) {
+      const info = STAGE_LABELS[active.stage_key];
+      onStageChange?.(info ? `${info.icon} ${info.label}` : null);
+    } else {
+      onStageChange?.(null);
+    }
+  }, [stages, onStageChange]);
 
   const toggleStatus = async (stage: Stage) => {
     const next = stage.status === "pending" ? "in_progress"
