@@ -129,6 +129,35 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
 
       <div style={sep} />
 
+      {/* Font size */}
+      <select
+        style={{
+          height: "28px", padding: "0 4px", border: "1px solid var(--color-hairline)",
+          borderRadius: "var(--radius-sm)", fontFamily: "var(--font-ui)", fontSize: "12px",
+          backgroundColor: "var(--color-canvas)", color: "var(--color-muted)",
+          cursor: "pointer", outline: "none",
+        }}
+        value={editor.getAttributes("textStyle").fontSize || ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v) editor.chain().focus().setFontSize(v).run();
+          else editor.chain().focus().unsetFontSize().run();
+        }}
+        title="字号"
+      >
+        <option value="">字号</option>
+        <option value="9pt">小五 9</option>
+        <option value="10.5pt">五号 10.5</option>
+        <option value="12pt">小四 12</option>
+        <option value="14pt">四号 14</option>
+        <option value="15pt">小三 15</option>
+        <option value="16pt">三号 16</option>
+        <option value="18pt">小二 18</option>
+        <option value="22pt">二号 22</option>
+      </select>
+
+      <div style={sep} />
+
       {/* Headings */}
       <button
         style={isActive("heading", { level: 1 }) ? activeBtn : btn}

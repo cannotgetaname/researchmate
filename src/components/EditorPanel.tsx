@@ -17,6 +17,7 @@ import { marked } from "marked";
 import "katex/dist/katex.min.css";
 import { MathInline, MathBlock } from "./MathExtension";
 import { Caption, CaptionRenumber, nextCaptionNumber } from "./CaptionExtension";
+import { FontSize } from "./FontSizeExtension";
 import EditorToolbar from "./EditorToolbar";
 
 interface EditorPanelProps {
@@ -299,6 +300,7 @@ export default function EditorPanel({
       MathBlock,
       Caption,
       CaptionRenumber,
+      FontSize,
     ],
     editorProps: {
       handleKeyDown: (view, event) => {
