@@ -88,7 +88,10 @@ export default function App() {
   const [pdfParser, setPdfParser] = useState("native");
   const [pythonPath, setPythonPath] = useState("");
 
-  const wordCount = useMemo(() => (content.match(/[一-鿿\w]+/g) || []).length, [content]);
+  const wordCount = useMemo(() => {
+    const plain = content.replace(/<[^>]+>/g, ""); // strip HTML tags
+    return (plain.match(/[一-鿿\w]+/g) || []).length;
+  }, [content]);
 
   const handleContentChange = useCallback((value: string | undefined) => { setContent(value ?? ""); }, []);
   const handleSelectionChange = useCallback(() => {}, []);

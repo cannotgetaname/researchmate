@@ -177,15 +177,20 @@ pub async fn export_document(
     let export_dir = target.parent().unwrap_or(&target).to_path_buf();
     let output_path = target;
 
-    // Write markdown to temp file
-    let md_path = export_dir.join(format!("_draft_{}.md", timestamp));
-    std::fs::write(&md_path, &content).map_err(|e| format!("写入草稿失败：{}", e))?;
+    // Detect input format: HTML if content starts with a tag, otherwise Markdown
+    let is_html = content.trim_start().starts_with('<');
+    let from_fmt = if is_html { "html" } else { "markdown+auto_identifiers+tex_math_dollars" };
+    let ext = if is_html { "html" } else { "md" };
+
+    // Write content to temp file
+    let tmp_path = export_dir.join(format!("_draft_{}.{}", timestamp, ext));
+    std::fs::write(&tmp_path, &content).map_err(|e| format!("写入草稿失败：{}", e))?;
 
     // Build pandoc command
     let mut cmd = Command::new(&pandoc);
-    cmd.arg(&md_path)
+    cmd.arg(&tmp_path)
        .arg("-o").arg(&output_path)
-       .arg("--from=markdown+auto_identifiers+tex_math_dollars")
+       .arg(format!("--from={}", from_fmt))
        .arg("--standalone");
 
     // Reference template (if present)
@@ -223,7 +228,7 @@ pub async fn export_document(
         return Err(format!("Pandoc 错误：{}", stderr));
     }
 
-    std::fs::remove_file(&md_path).ok();
+    std::fs::remove_file(&tmp_path).ok();
     Ok(output_path.to_string_lossy().to_string())
 }
 
@@ -236,8 +241,11 @@ pub async fn preview_html(
 ) -> Result<String, String> {
     let pandoc = pandoc_path(&output_dir);
 
+    let is_html = content.trim_start().starts_with('<');
+    let from_fmt = if is_html { "html" } else { "markdown+auto_identifiers+tex_math_dollars" };
+
     let mut cmd = Command::new(&pandoc);
-    cmd.arg("--from=markdown+auto_identifiers+tex_math_dollars")
+    cmd.arg(format!("--from={}", from_fmt))
        .arg("--to=html5")
        .arg("--standalone")
        .arg("--embed-resources")
