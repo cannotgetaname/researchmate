@@ -1,4 +1,6 @@
 import type { Editor } from "@tiptap/react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { nextCaptionNumber } from "./CaptionExtension";
 
 const btn: React.CSSProperties = {
@@ -47,14 +49,19 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
     }
   };
 
-  const addImage = () => {
-    const url = window.prompt("图片地址：", "https://");
-    if (!url) return;
+  const addImage = async () => {
+    const selected = await open({
+      multiple: false,
+      filters: [{ name: "图片", extensions: ["png", "jpg", "jpeg", "gif", "svg", "webp", "bmp"] }],
+    });
+    if (!selected) return;
+    const filePath = Array.isArray(selected) ? selected[0] : selected;
+    const assetUrl = convertFileSrc(filePath);
     const num = nextCaptionNumber(editor, "figure");
     editor
       .chain()
       .focus()
-      .setImage({ src: url })
+      .setImage({ src: assetUrl })
       .insertContent({
         type: "caption",
         attrs: { captionType: "figure", number: num },
