@@ -1,6 +1,6 @@
 import type { Editor } from "@tiptap/react";
+import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { convertFileSrc } from "@tauri-apps/api/core";
 import { nextCaptionNumber } from "./CaptionExtension";
 
 const btn: React.CSSProperties = {
@@ -56,12 +56,12 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
     });
     if (!selected) return;
     const filePath = Array.isArray(selected) ? selected[0] : selected;
-    const assetUrl = convertFileSrc(filePath);
+    const dataUrl: string = await invoke("read_image_as_data_url", { path: filePath });
     const num = nextCaptionNumber(editor, "figure");
     editor
       .chain()
       .focus()
-      .setImage({ src: assetUrl })
+      .setImage({ src: dataUrl })
       .insertContent({
         type: "caption",
         attrs: { captionType: "figure", number: num },

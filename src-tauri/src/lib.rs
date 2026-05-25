@@ -87,6 +87,7 @@ pub fn run() {
             commands::agent::chat_with_tools,
             commands::agent::set_session_kbs,
             commands::agent::get_session_kbs,
+            commands::util::read_image_as_data_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
