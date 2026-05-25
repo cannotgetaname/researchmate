@@ -48,10 +48,10 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
   const [curSize, setCurSize] = useState("12pt");
   useEffect(() => {
     const sync = () => {
-      const a = editor.getAttributes("textStyle");
-      // When no explicit style is set, fall back to the editor defaults
-      setCurFont(a.fontFamily || "Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif");
-      setCurSize(a.fontSize || "12pt");
+      const a = editor.getAttributes("textStyle") || {};
+      // Explicit check: undefined → use default; otherwise use the value (even empty string)
+      setCurFont(a.fontFamily !== undefined ? a.fontFamily : "Times New Roman, Liberation Serif, SimSun, 宋体, Noto Serif CJK SC, serif");
+      setCurSize(a.fontSize !== undefined ? a.fontSize : "12pt");
     };
     editor.on("selectionUpdate", sync);
     editor.on("transaction", sync);
