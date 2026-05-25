@@ -471,10 +471,10 @@ export default function EditorPanel({
 
       <div style={{ flex: 1, overflow: "auto", padding: "var(--space-lg) var(--space-xl)" }}>
         <style>{`
-          .tiptap { outline: none; max-width: 800px; margin: 0 auto; font-family: "PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif; font-size: 16px; line-height: 1.9; color: var(--color-ink); }
-          .tiptap h1 { font-size: 22px; font-weight: 700; margin: 1.4em 0 0.6em; }
-          .tiptap h2 { font-size: 19px; font-weight: 600; margin: 1.2em 0 0.5em; }
-          .tiptap h3 { font-size: 17px; font-weight: 600; margin: 1em 0 0.4em; }
+          .tiptap { outline: none; max-width: 800px; margin: 0 auto; font-family: "Times New Roman", "Liberation Serif", "SimSun", "宋体", "Noto Serif CJK SC", serif; font-size: 16px; line-height: 1.9; color: var(--color-ink); }
+          .tiptap h1 { font-family: "Times New Roman", "SimHei", "黑体", "Noto Sans CJK SC", sans-serif; font-size: 22px; font-weight: 700; margin: 1.4em 0 0.6em; }
+          .tiptap h2 { font-family: "Times New Roman", "SimHei", "黑体", "Noto Sans CJK SC", sans-serif; font-size: 19px; font-weight: 600; margin: 1.2em 0 0.5em; }
+          .tiptap h3 { font-family: "Times New Roman", "SimHei", "黑体", "Noto Sans CJK SC", sans-serif; font-size: 17px; font-weight: 600; margin: 1em 0 0.4em; }
           .tiptap p  { margin: 0; text-indent: 2em; }
           .tiptap ul, .tiptap ol { padding-left: 1.5em; margin: 0.5em 0; }
           .tiptap li { margin: 0.2em 0; }
