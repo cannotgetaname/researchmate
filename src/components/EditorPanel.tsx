@@ -451,9 +451,9 @@ export default function EditorPanel({
           .tiptap pre { background: var(--color-canvas-soft); border: 1px solid var(--color-hairline); border-radius: var(--radius-md); padding: 12px 16px; font-family: "JetBrains Mono","Fira Code",monospace; font-size: 14px; overflow-x: auto; }
           .tiptap code { font-family: "JetBrains Mono","Fira Code",monospace; font-size: 0.9em; background: var(--color-canvas-soft); padding: 1px 5px; border-radius: 3px; }
           .tiptap pre code { background: none; padding: 0; }
-          .tiptap table { border-collapse: collapse; width: 100%; margin: 1em 0; }
-          .tiptap th { background: var(--color-canvas-soft); font-weight: 600; text-align: left; border: 1px solid var(--color-hairline-strong); padding: 6px 10px; }
-          .tiptap td { border: 1px solid var(--color-hairline); padding: 6px 10px; }
+          .tiptap table { border-collapse: collapse; width: 100%; margin: 1em 0; border-top: 2px solid var(--color-ink); border-bottom: 2px solid var(--color-ink); }
+          .tiptap th { background: var(--color-canvas-soft); font-weight: 600; text-align: left; border-bottom: 1px solid var(--color-hairline-strong); padding: 6px 10px; }
+          .tiptap td { padding: 6px 10px; border: none; }
           .tiptap img { max-width: 100%; border-radius: var(--radius-sm); }
           .tiptap mark { background: #fff3cd; padding: 0 2px; }
           .tiptap a { color: var(--color-primary); text-decoration: underline; }
