@@ -140,7 +140,10 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         value={editor.getAttributes("textStyle").fontSize || ""}
         onChange={(e) => {
           const v = e.target.value;
-          editor.chain().focus().setMark("textStyle", { fontSize: v || null }).run();
+          console.log("[fontSize] onChange →", v);
+          const result = editor.chain().focus().setMark("textStyle", { fontSize: v || null }).run();
+          console.log("[fontSize] chain result:", result);
+          console.log("[fontSize] textStyle attrs after:", editor.getAttributes("textStyle"));
         }}
         title="字号"
       >

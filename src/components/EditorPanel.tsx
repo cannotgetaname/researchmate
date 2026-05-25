@@ -275,6 +275,12 @@ export default function EditorPanel({
       const sel = editor.state.selection;
       onSelectionChange(sel.empty ? "" : editor.state.doc.textBetween(sel.from, sel.to));
     },
+    onCreate: ({ editor }) => {
+      console.log("[fontSize debug] editor created");
+      console.log("[fontSize debug] schema marks:", Object.keys(editor.schema.marks));
+      console.log("[fontSize debug] textStyle mark:", !!editor.schema.marks.textStyle);
+      console.log("[fontSize debug] FontSize extension registered:", editor.extensionManager.extensions.some((e: any) => e.name === "fontSize"));
+    },
   });
 
   // ── Right-click context menu ──
