@@ -297,6 +297,16 @@ export default function EditorPanel({
       MathInline,
       MathBlock,
     ],
+    editorProps: {
+      handleKeyDown: (_view, event) => {
+        // Prevent browser ContentEditable from also inserting a line break
+        // on Enter — TipTap's keymap already handles paragraph splitting.
+        if (event.key === "Enter" && !event.shiftKey) {
+          event.preventDefault();
+        }
+        return false; // let TipTap's keymap continue
+      },
+    },
     content: "",
     onUpdate: ({ editor }) => onChange(editor.getHTML()),
     onSelectionUpdate: ({ editor }) => {
@@ -444,7 +454,7 @@ export default function EditorPanel({
           .tiptap h1 { font-size: 22px; font-weight: 700; margin: 1.4em 0 0.6em; }
           .tiptap h2 { font-size: 19px; font-weight: 600; margin: 1.2em 0 0.5em; }
           .tiptap h3 { font-size: 17px; font-weight: 600; margin: 1em 0 0.4em; }
-          .tiptap p  { margin: 0.5em 0; }
+          .tiptap p  { margin: 0; text-indent: 2em; }
           .tiptap ul, .tiptap ol { padding-left: 1.5em; margin: 0.5em 0; }
           .tiptap li { margin: 0.2em 0; }
           .tiptap blockquote { border-left: 3px solid var(--color-primary); padding-left: 16px; color: var(--color-muted); margin: 1em 0; }
