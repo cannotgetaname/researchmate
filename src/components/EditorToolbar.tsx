@@ -44,8 +44,8 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
     editor.isActive(name, attrs);
 
   // Track current font/font-size at selection
-  const [curFont, setCurFont] = useState("");
-  const [curSize, setCurSize] = useState("");
+  const [curFont, setCurFont] = useState("Times New Roman, Liberation Serif, serif");
+  const [curSize, setCurSize] = useState("12pt");
   useEffect(() => {
     const sync = () => {
       const a = editor.getAttributes("textStyle");
