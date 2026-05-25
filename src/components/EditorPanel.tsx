@@ -298,14 +298,21 @@ export default function EditorPanel({
       MathBlock,
     ],
     editorProps: {
-      handleKeyDown: (_view, event) => {
-        // Prevent browser ContentEditable default for these keys —
-        // ProseMirror's own keymap handles them correctly.
-        // Without this, browser and PM both act, causing double-delete / double-Enter.
-        if (event.key === "Enter" || event.key === "Backspace" || event.key === "Delete") {
+      handleKeyDown: (view, event) => {
+        if (event.key === "Enter") {
+          // Enter: always prevent browser default — PM handles paragraph split
           event.preventDefault();
+        } else if (event.key === "Backspace" || event.key === "Delete") {
+          // Only prevent default at paragraph boundaries where PM handles joining.
+          // Within text, let the browser handle normal character deletion.
+          const { $from } = view.state.selection;
+          const atParaStart = event.key === "Backspace" && $from.parentOffset === 0;
+          const atParaEnd = event.key === "Delete" && $from.parentOffset === $from.parent.content.size;
+          if (atParaStart || atParaEnd) {
+            event.preventDefault();
+          }
         }
-        return false; // let TipTap's keymap continue
+        return false;
       },
     },
     content: "",
