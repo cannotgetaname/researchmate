@@ -51,17 +51,18 @@ export const Caption = Node.create({
 
 // ── ProseMirror plugin: auto-renumber captions ──
 const captionPluginKey = new PluginKey("captionRenumber");
+let renumbering = false;
 
 export const captionRenumberPlugin = new Plugin({
   key: captionPluginKey,
   appendTransaction(transactions, _oldState, newState) {
+    if (renumbering) return; // prevent infinite loop from _sync bump
     if (transactions.every((tr) => !tr.docChanged)) return;
 
     const { doc } = newState;
     let figIdx = 0;
     let tblIdx = 0;
     const changes: { pos: number; number: number }[] = [];
-    let hasCrossRef = false;
 
     doc.descendants((node, pos) => {
       if (node.type.name === "caption") {
@@ -69,21 +70,20 @@ export const captionRenumberPlugin = new Plugin({
         const idx = ct === "figure" ? ++figIdx : ++tblIdx;
         if (node.attrs.number !== idx) changes.push({ pos, number: idx });
       }
-      if (node.type.name === "crossRef") hasCrossRef = true;
     });
 
-    if (changes.length === 0 && !hasCrossRef) return;
+    if (changes.length === 0) return;
 
+    renumbering = true;
     const tr = newState.tr;
     for (const c of changes) tr.setNodeAttribute(c.pos, "number", c.number);
 
-    // Bump _sync on all CrossRefs to force NodeView re-render when captions renumbered
-    if (changes.length > 0 || hasCrossRef) {
-      let ver = 0;
-      doc.descendants((node, pos) => {
-        if (node.type.name === "crossRef") tr.setNodeAttribute(pos, "_sync", ++ver);
-      });
-    }
+    // Bump _sync on all CrossRefs to force NodeView re-render
+    let ver = 0;
+    doc.descendants((node, pos) => {
+      if (node.type.name === "crossRef") tr.setNodeAttribute(pos, "_sync", ++ver);
+    });
+    renumbering = false;
     return tr;
   },
 });

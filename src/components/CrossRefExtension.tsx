@@ -142,10 +142,12 @@ export const CitationRef = Node.create({
 // ═══════════════════════════════════════════
 
 const citationNumberKey = new PluginKey("citationNumber");
+let citeRenumbering = false;
 
 export const citationNumberPlugin = new Plugin({
   key: citationNumberKey,
   appendTransaction(transactions, _oldState, newState) {
+    if (citeRenumbering) return;
     if (transactions.every((tr) => !tr.docChanged)) return;
 
     const { doc } = newState;
@@ -173,10 +175,12 @@ export const citationNumberPlugin = new Plugin({
 
     if (changes.length === 0) return;
 
+    citeRenumbering = true;
     const tr = newState.tr;
     for (const c of changes) {
       tr.setNodeAttribute(c.pos, "numbers", c.numbers);
     }
+    citeRenumbering = false;
     return tr;
   },
 });
