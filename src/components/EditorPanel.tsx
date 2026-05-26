@@ -26,7 +26,7 @@ interface EditorPanelProps {
   onAddToChat: (text: string) => void;
   projectId: string;
   skipAutoSaveRef?: React.MutableRefObject<boolean>;
-  citationInsert?: { docIds: string[]; key: string } | null;
+  citationInsert?: { docIds: string[]; key: string; title: string } | null;
   onCitationConsumed?: () => void;
 }
 
@@ -366,7 +366,7 @@ export default function EditorPanel({
     if (!editor || !citationInsert) return;
     editor.commands.insertContent({
       type: "citationRef",
-      attrs: { docIds: citationInsert.docIds, numbers: citationInsert.key },
+      attrs: { docIds: citationInsert.docIds, numbers: citationInsert.key, titles: [citationInsert.title] },
     });
     onCitationConsumed?.();
   }, [citationInsert, editor, onCitationConsumed]);
@@ -452,6 +452,7 @@ export default function EditorPanel({
           .tiptap img { max-width: 100%; border-radius: var(--radius-sm); }
           .tiptap mark { background: #fff3cd; padding: 0 2px; }
           .tiptap a { color: var(--color-primary); text-decoration: underline; }
+          .tiptap sup { line-height: 0; vertical-align: super; }
           .tiptap p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: var(--color-muted-soft); pointer-events: none; height: 0; }
           .caption { text-align: center; font-size: 14px; color: var(--color-muted); margin: 0.3em 0 1em; }
           .caption div { display: inline !important; }

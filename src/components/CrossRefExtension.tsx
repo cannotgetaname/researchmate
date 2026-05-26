@@ -89,16 +89,17 @@ export const CrossRef = Node.create({
 
 function CitationRenderer({ node, editor: _editor }: ReactNodeViewProps) {
   const numbers = (node.attrs as Record<string, any>).numbers || "";
-  const docIds: string[] = (node.attrs as Record<string, any>).docIds || [];
+  const titles: string[] = (node.attrs as Record<string, any>).titles || [];
+  const tip = titles.length > 0 ? `[${numbers}] ${titles.join("; ")}` : `[${numbers}]`;
 
   return (
     <NodeViewWrapper as="span" className="citation-ref" contentEditable={false}>
       <sup
         style={{
           color: "var(--color-primary)", fontWeight: 600, cursor: "pointer",
-          fontSize: "0.85em", margin: "0 1px",
+          fontSize: "0.85em", lineHeight: 0, verticalAlign: "super",
         }}
-        title={docIds.length > 0 ? `参考文献 ${docIds.join(", ")}` : "参考文献"}
+        title={tip}
       >
         [{numbers}]
       </sup>
@@ -117,6 +118,7 @@ export const CitationRef = Node.create({
     return {
       docIds: { default: [] as string[], parseHTML: (el) => (el.getAttribute("data-doc-ids") || "").split(",").filter(Boolean) },
       numbers: { default: "" },
+      titles: { default: [] as string[] },
     };
   },
 

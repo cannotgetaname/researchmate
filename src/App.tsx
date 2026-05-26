@@ -61,7 +61,7 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [fillText, setFillText] = useState("");
-  const [citationInsert, setCitationInsert] = useState<{ docIds: string[]; key: string } | null>(null);
+  const [citationInsert, setCitationInsert] = useState<{ docIds: string[]; key: string; title: string } | null>(null);
   const [saveMsg, setSaveMsg] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [mgmtTab, setMgmtTab] = useState("progress"); // 管理子标签
