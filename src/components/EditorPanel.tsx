@@ -16,6 +16,7 @@ import "katex/dist/katex.min.css";
 import { MathInline, MathBlock } from "./MathExtension";
 import { Caption, CaptionRenumber, nextCaptionNumber } from "./CaptionExtension";
 import { FontSize, FontFamily, TextStyle } from "@tiptap/extension-text-style";
+import { CrossRef, CitationRef, CitationRenumber } from "./CrossRefExtension";
 import EditorToolbar from "./EditorToolbar";
 
 interface EditorPanelProps {
@@ -220,6 +221,7 @@ export default function EditorPanel({
 }: EditorPanelProps) {
   const [exportMsg, setExportMsg] = useState("");
   const [showTableDlg, setShowTableDlg] = useState(false);
+  const [showRefPicker, setShowRefPicker] = useState(false);
   const [tableCols, setTableCols] = useState(3);
   const [tableRows, setTableRows] = useState(3);
   const [ctxMenu, setCtxMenu] = useState<CtxState>({ visible: false, x: 0, y: 0, text: "" });
@@ -254,6 +256,9 @@ export default function EditorPanel({
       CaptionRenumber,
       FontSize,
       FontFamily,
+      CrossRef,
+      CitationRef,
+      CitationRenumber,
     ],
     editorProps: {
       handleKeyDown: (view, event) => {
@@ -388,13 +393,14 @@ export default function EditorPanel({
 
   const insertTable = useCallback(() => {
     if (!editor) return;
+    const captionId = crypto.randomUUID();
     const num = nextCaptionNumber(editor, "table");
     editor
       .chain()
       .focus()
       .insertContent({
         type: "caption",
-        attrs: { captionType: "table", number: num },
+        attrs: { id: captionId, captionType: "table", number: num },
         content: [{ type: "text", text: " " }],
       })
       .insertTable({ rows: tableRows, cols: tableCols, withHeaderRow: true })
@@ -416,7 +422,7 @@ export default function EditorPanel({
         <span className="editor-tab active">论文草稿</span>
       </div>
 
-      <EditorToolbar editor={editor} onExport={handleExport} onOpenTableDlg={() => setShowTableDlg(true)} />
+      <EditorToolbar editor={editor} onExport={handleExport} onOpenTableDlg={() => setShowTableDlg(true)} onOpenRefPicker={() => setShowRefPicker(true)} />
 
       {exportMsg && (
         <div style={{ padding: "4px var(--space-sm)", fontSize: 12, color: exportMsg.includes("失败") ? "var(--color-error)" : "var(--color-success)", backgroundColor: "var(--color-canvas-soft)", borderBottom: "1px solid var(--color-hairline)" }}>
@@ -480,6 +486,47 @@ export default function EditorPanel({
               选中文字后可使用更多功能
             </div>
           )}
+        </div>
+      )}
+
+      {/* Cross-reference picker */}
+      {showRefPicker && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 1002, backgroundColor: "rgba(0,0,0,0.2)", display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={() => setShowRefPicker(false)}>
+          <div style={{ backgroundColor: "var(--color-surface-card)", borderRadius: "var(--radius-lg)", padding: "var(--space-lg)", minWidth: 320, maxHeight: "70vh", overflowY: "auto", border: "1px solid var(--color-hairline)", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}
+            onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: "var(--space-base)", color: "var(--color-ink)" }}>插入交叉引用</div>
+            {(() => {
+              const items: { id: string; type: string; number: number; text: string }[] = [];
+              editor.state.doc.descendants((node) => {
+                if (node.type.name === "caption") {
+                  items.push({
+                    id: node.attrs.id,
+                    type: node.attrs.captionType || "figure",
+                    number: node.attrs.number || 1,
+                    text: node.textContent.trim() || "(无描述)",
+                  });
+                }
+              });
+              if (items.length === 0) return <div style={{ fontSize: 12, color: "var(--color-muted)" }}>文档中还没有图/表题注。请先插入图片或表格。</div>;
+              const label = (t: string) => t === "figure" ? "图" : "表";
+              return items.map((item) => (
+                <div key={item.id} style={{ padding: "8px var(--space-sm)", cursor: "pointer", fontSize: 13, borderRadius: "var(--radius-sm)", color: "var(--color-ink)", display: "flex", gap: "var(--space-sm)" }}
+                  onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = "var(--color-canvas-soft)"; }}
+                  onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = "transparent"; }}
+                  onClick={() => {
+                    editor.chain().focus().insertContent({ type: "crossRef", attrs: { refId: item.id, refType: item.type } }).run();
+                    setShowRefPicker(false);
+                  }}>
+                  <span style={{ fontWeight: 600, whiteSpace: "nowrap" }}>{label(item.type)}{item.number}:</span>
+                  <span style={{ color: "var(--color-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.text}</span>
+                </div>
+              ));
+            })()}
+            <div style={{ marginTop: "var(--space-base)", textAlign: "right" }}>
+              <button className="topnav-btn" onClick={() => setShowRefPicker(false)}>取消</button>
+            </div>
+          </div>
         </div>
       )}
 

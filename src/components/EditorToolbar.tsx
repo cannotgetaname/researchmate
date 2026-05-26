@@ -37,9 +37,10 @@ interface EditorToolbarProps {
   editor: Editor;
   onExport: (format: "docx" | "pdf") => void;
   onOpenTableDlg: () => void;
+  onOpenRefPicker: () => void;
 }
 
-export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: EditorToolbarProps) {
+export default function EditorToolbar({ editor, onExport, onOpenTableDlg, onOpenRefPicker }: EditorToolbarProps) {
   const isActive = (name: string, attrs?: Record<string, unknown>) =>
     editor.isActive(name, attrs);
 
@@ -77,14 +78,14 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
     if (!selected) return;
     const filePath = Array.isArray(selected) ? selected[0] : selected;
     const dataUrl: string = await invoke("read_image_as_data_url", { path: filePath });
+    const captionId = crypto.randomUUID();
     const num = nextCaptionNumber(editor, "figure");
-    // Insert both image and caption in one transaction to avoid ordering issues
     editor
       .chain()
       .focus()
       .insertContent([
         { type: "image", attrs: { src: dataUrl } },
-        { type: "caption", attrs: { captionType: "figure", number: num }, content: [{ type: "text", text: " " }] },
+        { type: "caption", attrs: { id: captionId, captionType: "figure", number: num }, content: [{ type: "text", text: " " }] },
       ])
       .run();
   };
@@ -300,6 +301,9 @@ export default function EditorToolbar({ editor, onExport, onOpenTableDlg }: Edit
         title="插入公式 (行内输入 $...$ 亦可自动转换)"
       >
         ∑
+      </button>
+      <button style={btn} onClick={onOpenRefPicker} title="交叉引用（图/表）">
+        ↩
       </button>
       <button style={btn} onClick={() => editor.chain().focus().setHorizontalRule().run()} title="分割线">
         —

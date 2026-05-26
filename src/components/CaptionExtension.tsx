@@ -27,6 +27,7 @@ export const Caption = Node.create({
 
   addAttributes() {
     return {
+      id: { default: "" },  // unique id for cross-referencing
       captionType: { default: "figure" },
       number: { default: 1 },
     };
@@ -54,29 +55,34 @@ const captionPluginKey = new PluginKey("captionRenumber");
 export const captionRenumberPlugin = new Plugin({
   key: captionPluginKey,
   appendTransaction(transactions, _oldState, newState) {
-    // Avoid infinite loops — only run if the doc actually changed
     if (transactions.every((tr) => !tr.docChanged)) return;
 
     const { doc } = newState;
-    const changes: { pos: number; number: number }[] = [];
-
     let figIdx = 0;
     let tblIdx = 0;
+    const changes: { pos: number; number: number }[] = [];
+    let hasCrossRef = false;
 
     doc.descendants((node, pos) => {
-      if (node.type.name !== "caption") return;
-      const ct = node.attrs.captionType || "figure";
-      const idx = ct === "figure" ? ++figIdx : ++tblIdx;
-      if (node.attrs.number !== idx) {
-        changes.push({ pos, number: idx });
+      if (node.type.name === "caption") {
+        const ct = node.attrs.captionType || "figure";
+        const idx = ct === "figure" ? ++figIdx : ++tblIdx;
+        if (node.attrs.number !== idx) changes.push({ pos, number: idx });
       }
+      if (node.type.name === "crossRef") hasCrossRef = true;
     });
 
-    if (changes.length === 0) return;
+    if (changes.length === 0 && !hasCrossRef) return;
 
     const tr = newState.tr;
-    for (const c of changes) {
-      tr.setNodeAttribute(c.pos, "number", c.number);
+    for (const c of changes) tr.setNodeAttribute(c.pos, "number", c.number);
+
+    // Bump _sync on all CrossRefs to force NodeView re-render when captions renumbered
+    if (changes.length > 0 || hasCrossRef) {
+      let ver = 0;
+      doc.descendants((node, pos) => {
+        if (node.type.name === "crossRef") tr.setNodeAttribute(pos, "_sync", ++ver);
+      });
     }
     return tr;
   },
