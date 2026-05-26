@@ -92,8 +92,20 @@ export default function App() {
   const [pythonPath, setPythonPath] = useState("");
 
   const wordCount = useMemo(() => {
-    const plain = content.replace(/<[^>]+>/g, ""); // strip HTML tags
-    return (plain.match(/[一-鿿\w]+/g) || []).length;
+    try {
+      const parsed = JSON.parse(content);
+      // Flatten all text from ProseMirror JSON
+      const extractText = (node: any): string => {
+        if (node.text) return node.text;
+        if (node.content) return node.content.map(extractText).join(" ");
+        return "";
+      };
+      const plain = extractText(parsed);
+      return (plain.match(/[一-鿿\w]+/g) || []).length;
+    } catch {
+      const plain = content.replace(/<[^>]+>/g, "");
+      return (plain.match(/[一-鿿\w]+/g) || []).length;
+    }
   }, [content]);
 
   const handleContentChange = useCallback((value: string | undefined) => { setContent(value ?? ""); }, []);

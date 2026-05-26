@@ -279,7 +279,7 @@ export default function EditorPanel({
       },
     },
     content: "",
-    onUpdate: ({ editor }) => onChange(editor.getHTML()),
+    onUpdate: ({ editor }) => onChange(JSON.stringify(editor.getJSON())),
     onSelectionUpdate: ({ editor }) => {
       const sel = editor.state.selection;
       onSelectionChange(sel.empty ? "" : editor.state.doc.textBetween(sel.from, sel.to));
@@ -340,8 +340,18 @@ export default function EditorPanel({
     (async () => {
       try {
         const draft: string = await invoke("load_draft", { projectId });
-        editor.commands.setContent(draft ? (looksLikeHtml(draft) ? draft : markdownToHtml(draft)) : "");
-        // Convert raw $...$ patterns in loaded content to math nodes
+        if (draft) {
+          try {
+            // Try JSON first (new format)
+            const json = JSON.parse(draft);
+            editor.commands.setContent(json);
+          } catch {
+            // Fall back to HTML/markdown (old format)
+            editor.commands.setContent(looksLikeHtml(draft) ? draft : markdownToHtml(draft));
+          }
+        } else {
+          editor.commands.setContent("");
+        }
         setTimeout(() => migrateLatexInDoc(editor), 0);
       } catch {
         editor.commands.setContent("");
