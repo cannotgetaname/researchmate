@@ -61,7 +61,7 @@ export default function App() {
   const [showAbout, setShowAbout] = useState(false);
   const [showNewProject, setShowNewProject] = useState(false);
   const [fillText, setFillText] = useState("");
-  const [citationInsert, setCitationInsert] = useState("");
+  const [citationInsert, setCitationInsert] = useState<{ docIds: string[]; key: string } | null>(null);
   const [saveMsg, setSaveMsg] = useState("");
   const [updateAvailable, setUpdateAvailable] = useState(false);
   const [mgmtTab, setMgmtTab] = useState("progress"); // 管理子标签
@@ -192,7 +192,7 @@ export default function App() {
         activeStage={activeStageLabel}
       />
       <div className="app-main">
-        <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} projectId={activeProject} skipAutoSaveRef={viewingHistoryRef} citationInsert={citationInsert} onCitationConsumed={() => setCitationInsert("")} />
+        <EditorPanel content={content} onChange={handleContentChange} onSelectionChange={handleSelectionChange} onAddToChat={handleAddToChat} projectId={activeProject} skipAutoSaveRef={viewingHistoryRef} citationInsert={citationInsert} onCitationConsumed={() => setCitationInsert(null)} />
         <div style={{ display: activeModule === "lit" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
           <div className="chat-tabs" style={{ display: "flex", height: "40px", borderBottom: "1px solid var(--color-hairline)", padding: "0 var(--space-sm)", gap: "var(--space-xs)" }}>
             {ALL_TABS.map((m) => (
@@ -202,7 +202,7 @@ export default function App() {
           <DocumentPanel projectId={activeProject} />
         </div>
         <div style={{ display: activeModule === "write" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
-          <ChatPanel activeModule={activeModule} onModuleChange={setActiveModule} fillText={fillText} onFillConsumed={handleFillConsumed} projectId={activeProject} onInsertCitation={(t) => setCitationInsert(t)} />
+          <ChatPanel activeModule={activeModule} onModuleChange={setActiveModule} fillText={fillText} onFillConsumed={handleFillConsumed} projectId={activeProject} onInsertCitation={(data) => setCitationInsert(data)} />
         </div>
         <div style={{ display: activeModule === "data" ? "flex" : "none", flex: 4, flexDirection: "column", backgroundColor: "var(--color-canvas)", minWidth: "360px" }}>
           <div className="chat-tabs" style={{ display: "flex", height: "40px", borderBottom: "1px solid var(--color-hairline)", padding: "0 var(--space-sm)", gap: "var(--space-xs)" }}>

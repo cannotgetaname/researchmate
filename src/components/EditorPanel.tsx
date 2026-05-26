@@ -26,7 +26,7 @@ interface EditorPanelProps {
   onAddToChat: (text: string) => void;
   projectId: string;
   skipAutoSaveRef?: React.MutableRefObject<boolean>;
-  citationInsert?: string;
+  citationInsert?: { docIds: string[]; key: string } | null;
   onCitationConsumed?: () => void;
 }
 
@@ -361,10 +361,13 @@ export default function EditorPanel({
     return () => { if (saveRef.current) clearTimeout(saveRef.current); };
   }, [content, projectId]);
 
-  // ── Citation insertion ──
+  // ── Citation insertion (creates CitationRef node) ──
   useEffect(() => {
     if (!editor || !citationInsert) return;
-    editor.commands.insertContent(citationInsert);
+    editor.commands.insertContent({
+      type: "citationRef",
+      attrs: { docIds: citationInsert.docIds, numbers: citationInsert.key },
+    });
     onCitationConsumed?.();
   }, [citationInsert, editor, onCitationConsumed]);
 

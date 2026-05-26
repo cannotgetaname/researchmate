@@ -26,7 +26,7 @@ interface ChatPanelProps {
   fillText: string;
   onFillConsumed: () => void;
   projectId: string;
-  onInsertCitation?: (text: string) => void;
+  onInsertCitation?: (data: { docIds: string[]; key: string }) => void;
 }
 
 const MODULES = [
@@ -216,9 +216,7 @@ export default function ChatPanel({
   };
 
   const handleInsertCitation = (s: CitationSuggestion) => {
-    // Insert with title for precise identification
-    const shortTitle = s.title.length > 40 ? s.title.slice(0, 40) + "…" : s.title;
-    onInsertCitation?.(`【${s.key}, 《${shortTitle}》】`);
+    onInsertCitation?.({ docIds: [s.document_id], key: s.key });
   };
 
   const handleSend = () => {
