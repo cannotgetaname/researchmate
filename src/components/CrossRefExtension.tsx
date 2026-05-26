@@ -58,9 +58,15 @@ export const CrossRef = Node.create({
 
   addAttributes() {
     return {
-      refId: { default: "" },
-      refType: { default: "figure" },
-      _sync: { default: 0 },  // bumped by captionRenumberPlugin to force re-render
+      refId: {
+        default: "",
+        parseHTML: (el) => el.getAttribute("data-ref-id") || "",
+      },
+      refType: {
+        default: "figure",
+        parseHTML: (el) => el.getAttribute("data-ref-type") || "figure",
+      },
+      _sync: { default: 0 },
     };
   },
 
@@ -73,8 +79,8 @@ export const CrossRef = Node.create({
     const num = HTMLAttributes["data-number"] || "?";
     return ["a", mergeAttributes(HTMLAttributes, {
       class: "cross-ref",
-      href: `#ref-${HTMLAttributes.refId || ""}`,
-      style: "color: var(--color-primary); font-weight: 500;",
+      "data-ref-id": HTMLAttributes.refId || "",
+      "data-ref-type": HTMLAttributes.refType || "figure",
     }), `${prefix}${num}`];
   },
 
@@ -116,9 +122,18 @@ export const CitationRef = Node.create({
 
   addAttributes() {
     return {
-      docIds: { default: [] as string[], parseHTML: (el) => (el.getAttribute("data-doc-ids") || "").split(",").filter(Boolean) },
-      numbers: { default: "" },
-      titles: { default: [] as string[] },
+      docIds: {
+        default: [] as string[],
+        parseHTML: (el) => (el.getAttribute("data-doc-ids") || "").split(",").filter(Boolean),
+      },
+      numbers: {
+        default: "",
+        parseHTML: (el) => el.getAttribute("data-numbers") || "",
+      },
+      titles: {
+        default: [] as string[],
+        parseHTML: (el) => (el.getAttribute("data-titles") || "").split(";;").filter(Boolean),
+      },
     };
   },
 
@@ -128,9 +143,12 @@ export const CitationRef = Node.create({
 
   renderHTML({ HTMLAttributes }) {
     const nums = HTMLAttributes.numbers || "?";
+    const titles = (HTMLAttributes.titles || []) as string[];
     return ["sup", mergeAttributes(HTMLAttributes, {
       class: "citation-ref",
       "data-doc-ids": (HTMLAttributes.docIds || []).join(","),
+      "data-numbers": nums,
+      "data-titles": titles.join(";;"),
     }), `[${nums}]`];
   },
 
